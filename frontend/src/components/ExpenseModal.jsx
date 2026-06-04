@@ -131,23 +131,34 @@ export default function ExpenseModal({ isOpen, onClose, onSuccess, initialGroupI
     if (selectedGroup) {
       loadGroupMembers(selectedGroup);
     } else if (selectedFriend) {
-      const friendObj = friends.find(f => f.id === parseInt(selectedFriend));
-      if (friendObj && currentUser) {
-        list = [
-          { id: currentUser.id, username: 'You', avatarUrl: currentUser.avatarUrl },
-          { id: friendObj.id, username: friendObj.username, avatarUrl: friendObj.avatarUrl }
-        ];
-        setParticipants(list);
-        setPaidBy(currentUser.id.toString());
-        
-        // Default borrowers = all participants except payer
-        setBorrowers([friendObj.id]);
+      if (selectedFriend === 'personal') {
+        if (currentUser) {
+          list = [
+            { id: currentUser.id, username: 'You', avatarUrl: currentUser.avatarUrl }
+          ];
+          setParticipants(list);
+          setPaidBy(currentUser.id.toString());
+          setBorrowers([]);
+        }
+      } else {
+        const friendObj = friends.find(f => f.id === parseInt(selectedFriend));
+        if (friendObj && currentUser) {
+          list = [
+            { id: currentUser.id, username: 'You', avatarUrl: currentUser.avatarUrl },
+            { id: friendObj.id, username: friendObj.username, avatarUrl: friendObj.avatarUrl }
+          ];
+          setParticipants(list);
+          setPaidBy(currentUser.id.toString());
+          
+          // Default borrowers = all participants except payer
+          setBorrowers([friendObj.id]);
 
-        // Initialize item consumers
-        setItems(prev => prev.map(item => ({
-          ...item,
-          consumers: [currentUser.id, friendObj.id]
-        })));
+          // Initialize item consumers
+          setItems(prev => prev.map(item => ({
+            ...item,
+            consumers: [currentUser.id, friendObj.id]
+          })));
+        }
       }
     } else {
       setParticipants([]);
@@ -584,6 +595,7 @@ export default function ExpenseModal({ isOpen, onClose, onSuccess, initialGroupI
               <label className="form-label">Or Select Friend</label>
               <select className="form-control" value={selectedFriend} onChange={e => setSelectedFriend(e.target.value)} disabled={!!selectedGroup}>
                 <option value="">-- Choose Friend --</option>
+                <option value="personal">Individual / Personal (No split)</option>
                 {friends.map(f => (
                   <option key={f.id} value={f.id}>{f.username}</option>
                 ))}
@@ -638,7 +650,7 @@ export default function ExpenseModal({ isOpen, onClose, onSuccess, initialGroupI
             </div>
           </div>
 
-          {participants.length > 0 && (
+          {participants.length > 1 && (
             <div style={{ background: 'rgba(255,255,255,0.01)', padding: '16px', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border-color)' }}>
               {/* Paid By Selection */}
               <div className="form-group" style={{ marginBottom: '14px' }}>

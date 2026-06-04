@@ -381,7 +381,9 @@ export default function Dashboard({ triggerRefresh, refreshTrigger }) {
                           <div style={{ textAlign: 'right' }}>
                             <div style={{ fontSize: '0.95rem', fontWeight: 600 }}>${act.amount.toFixed(2)}</div>
                             <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '2px' }}>
-                              {youPaid ? (
+                              {act.splits && act.splits.length === 1 && act.splits[0].userId === act.paidBy ? (
+                                <span className="amt-neutral">personal expense</span>
+                              ) : youPaid ? (
                                 <span className="amt-positive">you lent ${(act.amount - yourShare).toFixed(2)}</span>
                               ) : (
                                 <span className="amt-negative">you borrowed ${yourShare.toFixed(2)}</span>

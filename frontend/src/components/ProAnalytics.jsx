@@ -1,8 +1,11 @@
 import React from 'react';
 import { PieChart, TrendingUp, DollarSign, Calendar } from 'lucide-react';
 import { getCategoryIcon } from '../pages/Dashboard';
+import { api } from '../utils/api';
 
 export default function ProAnalytics({ expenses = [] }) {
+  const currentUser = api.auth.getUser();
+
   // 1. Calculate spending by category
   const categories = {
     Food: { amount: 0, color: '#f59e0b', label: 'Food / Dining' },
@@ -16,7 +19,9 @@ export default function ProAnalytics({ expenses = [] }) {
   let totalSpent = 0;
   expenses.forEach(e => {
     const cat = e.category || 'General';
-    const amt = parseFloat(e.amount) || 0;
+    const mySplit = e.splits ? e.splits.find(s => s.userId === currentUser?.id) : null;
+    const amt = mySplit ? mySplit.amount : (e.splits && e.splits.length > 0 ? 0 : parseFloat(e.amount) || 0);
+
     if (categories[cat]) {
       categories[cat].amount += amt;
     } else {
@@ -57,7 +62,9 @@ export default function ProAnalytics({ expenses = [] }) {
     const d = new Date(e.date);
     const label = `${monthNames[d.getMonth()]} ${d.getFullYear().toString().slice(-2)}`;
     if (monthlyTotals[label] !== undefined) {
-      monthlyTotals[label] += parseFloat(e.amount) || 0;
+      const mySplit = e.splits ? e.splits.find(s => s.userId === currentUser?.id) : null;
+      const amt = mySplit ? mySplit.amount : (e.splits && e.splits.length > 0 ? 0 : parseFloat(e.amount) || 0);
+      monthlyTotals[label] += amt;
     }
   });
 
