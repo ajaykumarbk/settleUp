@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, X, AlertTriangle, Scan, Camera, Sparkles, Trash2, Coins, ArrowRightLeft, HandCoins } from 'lucide-react';
 import { api } from '../utils/api';
+import { currencies } from '../utils/currencies';
+import { t } from '../utils/translations';
 
 const receiptTemplates = {
   cafe: {
@@ -60,6 +62,10 @@ export default function ExpenseModal({ isOpen, onClose, onSuccess, initialGroupI
   // Participants and custom split amounts
   const [participants, setParticipants] = useState([]);
   const [customAmounts, setCustomAmounts] = useState({}); // { [userId]: amount }
+  const [customPercentages, setCustomPercentages] = useState({}); // { [userId]: percentage }
+  const [customShares, setCustomShares] = useState({}); // { [userId]: shares }
+  const [isRecurring, setIsRecurring] = useState(false);
+  const [recurrenceInterval, setRecurrenceInterval] = useState('monthly');
   const [validationError, setValidationError] = useState('');
 
   const currentUser = api.auth.getUser();
@@ -82,6 +88,10 @@ export default function ExpenseModal({ isOpen, onClose, onSuccess, initialGroupI
       setCurrency('USD');
       setSplitType('equal');
       setCustomAmounts({});
+      setCustomPercentages({});
+      setCustomShares({});
+      setIsRecurring(false);
+      setRecurrenceInterval('monthly');
       setValidationError('');
       setReceiptUrl('');
       setShowScanner(false);
@@ -343,6 +353,51 @@ export default function ExpenseModal({ isOpen, onClose, onSuccess, initialGroupI
     return shares;
   };
 
+  // Percentage split helpers
+  const handlePercentageChange = (userId, value) => {
+    setCustomPercentages(prev => ({ ...prev, [userId]: value }));
+  };
+
+  const getPercentageSum = () => {
+    return participants.reduce((sum, p) => sum + (parseFloat(customPercentages[p.id]) || 0), 0);
+  };
+
+  const getPercentageSplits = () => {
+    const finalAmount = parseFloat(amount) || 0;
+    const shares = {};
+    participants.forEach(p => {
+      const pct = parseFloat(customPercentages[p.id]) || 0;
+      shares[p.id] = (pct / 100) * finalAmount;
+    });
+    return shares;
+  };
+
+  // Shares split helpers
+  const handleSharesChange = (userId, value) => {
+    setCustomShares(prev => ({ ...prev, [userId]: value }));
+  };
+
+  const getSharesSum = () => {
+    return participants.reduce((sum, p) => sum + (parseFloat(customShares[p.id]) || 0), 0);
+  };
+
+  const getSharesSplits = () => {
+    const finalAmount = parseFloat(amount) || 0;
+    const shares = {};
+    const totalShares = getSharesSum();
+    if (totalShares > 0) {
+      participants.forEach(p => {
+        const sh = parseFloat(customShares[p.id]) || 0;
+        shares[p.id] = (sh / totalShares) * finalAmount;
+      });
+    } else {
+      participants.forEach(p => {
+        shares[p.id] = 0;
+      });
+    }
+    return shares;
+  };
+
   // Live equal splits preview
   const parsedAmount = parseFloat(amount) || 0;
   const equalSplitShare = participants.length > 0 ? (parsedAmount / participants.length) : 0;
@@ -401,6 +456,40 @@ export default function ExpenseModal({ isOpen, onClose, onSuccess, initialGroupI
         userId: p.id,
         amount: Math.round((shares[p.id] || 0) * 100) / 100
       }));
+    } else if (splitType === 'percentage') {
+      const sum = getPercentageSum();
+      if (Math.abs(sum - 100) > 0.05) {
+        setValidationError(`Split percentages (${sum}%) must sum up exactly to 100%`);
+        return;
+      }
+      const shares = getPercentageSplits();
+      let runningSum = 0;
+      participants.forEach((p, idx) => {
+        let personalShare = Math.round((shares[p.id] || 0) * 100) / 100;
+        if (idx === participants.length - 1) {
+          personalShare = Math.round((finalAmount - runningSum) * 100) / 100;
+        } else {
+          runningSum += personalShare;
+        }
+        splits.push({ userId: p.id, amount: personalShare });
+      });
+    } else if (splitType === 'shares') {
+      const sum = getSharesSum();
+      if (sum <= 0) {
+        setValidationError('Please allocate at least 1 share.');
+        return;
+      }
+      const shares = getSharesSplits();
+      let runningSum = 0;
+      participants.forEach((p, idx) => {
+        let personalShare = Math.round((shares[p.id] || 0) * 100) / 100;
+        if (idx === participants.length - 1) {
+          personalShare = Math.round((finalAmount - runningSum) * 100) / 100;
+        } else {
+          runningSum += personalShare;
+        }
+        splits.push({ userId: p.id, amount: personalShare });
+      });
     } else {
       // Loan splits submission
       if (borrowers.length === 0) {
@@ -429,6 +518,8 @@ export default function ExpenseModal({ isOpen, onClose, onSuccess, initialGroupI
       category: splitType === 'loan' ? 'General' : category,
       date,
       receiptUrl: receiptUrl || null,
+      isRecurring,
+      recurrenceInterval: isRecurring ? recurrenceInterval : null,
       splits
     };
 
@@ -454,7 +545,7 @@ export default function ExpenseModal({ isOpen, onClose, onSuccess, initialGroupI
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <Sparkles size={18} style={{ color: 'var(--color-primary)' }} />
-            <h2 style={{ fontSize: '1.35rem' }}>Add an Expense</h2>
+            <h2 style={{ fontSize: '1.35rem' }}>{t('addExpense')}</h2>
           </div>
           <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}>
             <X size={20} />
@@ -606,20 +697,21 @@ export default function ExpenseModal({ isOpen, onClose, onSuccess, initialGroupI
           {/* Description & Amount & Currency */}
           <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: '12px' }}>
             <div className="form-group">
-              <label className="form-label">Description</label>
+              <label className="form-label">{t('description')}</label>
               <input type="text" className="form-control" placeholder="e.g. Starbucks, Uber" value={description} onChange={e => setDescription(e.target.value)} required />
             </div>
             <div className="form-group">
-              <label className="form-label">Amount</label>
+              <label className="form-label">{t('amount')}</label>
               <input type="number" step="0.01" min="0.01" className="form-control" placeholder="0.00" value={amount} onChange={e => setAmount(e.target.value)} required disabled={splitType === 'itemized'} />
             </div>
             <div className="form-group">
-              <label className="form-label">Currency</label>
+              <label className="form-label">{t('currency')}</label>
               <select className="form-control" value={currency} onChange={e => setCurrency(e.target.value)}>
-                <option value="USD">USD ($)</option>
-                <option value="EUR">EUR (€)</option>
-                <option value="GBP">GBP (£)</option>
-                <option value="INR">INR (₹)</option>
+                {currencies.map(c => (
+                  <option key={c.code} value={c.code}>
+                    {c.code} ({c.symbol}) - {c.name}
+                  </option>
+                ))}
               </select>
             </div>
           </div>
@@ -645,9 +737,39 @@ export default function ExpenseModal({ isOpen, onClose, onSuccess, initialGroupI
               </select>
             </div>
             <div className="form-group">
-              <label className="form-label">Date</label>
+              <label className="form-label">{t('date')}</label>
               <input type="date" className="form-control" value={date} onChange={e => setDate(e.target.value)} required />
             </div>
+          </div>
+
+          {/* Recurring Expense Setup */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 0.8fr', gap: '16px', alignItems: 'center', background: 'rgba(255,255,255,0.01)', padding: '12px 16px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)', marginTop: '4px' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.85rem', userSelect: 'none', margin: 0 }}>
+              <input
+                type="checkbox"
+                checked={isRecurring}
+                onChange={e => setIsRecurring(e.target.checked)}
+              />
+              <span>{t('repeatExpense')}</span>
+            </label>
+            
+            {isRecurring ? (
+              <div className="form-group" style={{ margin: 0 }}>
+                <select
+                  className="form-control"
+                  value={recurrenceInterval}
+                  onChange={e => setRecurrenceInterval(e.target.value)}
+                  style={{ padding: '6px 10px', fontSize: '0.8rem' }}
+                >
+                  <option value="daily">{t('daily')}</option>
+                  <option value="weekly">{t('weekly')}</option>
+                  <option value="monthly">{t('monthly')}</option>
+                  <option value="yearly">Yearly</option>
+                </select>
+              </div>
+            ) : (
+              <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', textAlign: 'right' }}>One-time expense</span>
+            )}
           </div>
 
           {participants.length > 1 && (
@@ -665,13 +787,84 @@ export default function ExpenseModal({ isOpen, onClose, onSuccess, initialGroupI
               {/* Split Option Tabs */}
               <div className="form-group" style={{ marginBottom: '16px' }}>
                 <label className="form-label">Split Setup</label>
-                <div style={{ display: 'flex', gap: '8px', overflowX: 'auto' }}>
-                  <button type="button" className={`btn ${splitType === 'equal' ? 'btn-primary' : 'btn-secondary'}`} style={{ flex: 1, padding: '6px', fontSize: '0.85rem' }} onClick={() => setSplitType('equal')}>Equally</button>
-                  <button type="button" className={`btn ${splitType === 'unequal' ? 'btn-primary' : 'btn-secondary'}`} style={{ flex: 1, padding: '6px', fontSize: '0.85rem' }} onClick={() => setSplitType('unequal')}>Unequally</button>
-                  <button type="button" className={`btn ${splitType === 'itemized' ? 'btn-primary' : 'btn-secondary'}`} style={{ flex: 1, padding: '6px', fontSize: '0.85rem' }} onClick={() => setSplitType('itemized')}>Itemized</button>
-                  <button type="button" className={`btn ${splitType === 'loan' ? 'btn-primary' : 'btn-secondary'}`} style={{ flex: 1, padding: '6px', fontSize: '0.85rem' }} onClick={() => setSplitType('loan')}>Loan</button>
+                <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '6px' }}>
+                  <button type="button" className={`btn ${splitType === 'equal' ? 'btn-primary' : 'btn-secondary'}`} style={{ padding: '6px 12px', fontSize: '0.85rem', whiteSpace: 'nowrap' }} onClick={() => setSplitType('equal')}>{t('splitEqually')}</button>
+                  <button type="button" className={`btn ${splitType === 'unequal' ? 'btn-primary' : 'btn-secondary'}`} style={{ padding: '6px 12px', fontSize: '0.85rem', whiteSpace: 'nowrap' }} onClick={() => setSplitType('unequal')}>{t('splitUnequally')}</button>
+                  <button type="button" className={`btn ${splitType === 'percentage' ? 'btn-primary' : 'btn-secondary'}`} style={{ padding: '6px 12px', fontSize: '0.85rem', whiteSpace: 'nowrap' }} onClick={() => setSplitType('percentage')}>{t('splitPercentages')}</button>
+                  <button type="button" className={`btn ${splitType === 'shares' ? 'btn-primary' : 'btn-secondary'}`} style={{ padding: '6px 12px', fontSize: '0.85rem', whiteSpace: 'nowrap' }} onClick={() => setSplitType('shares')}>{t('splitShares')}</button>
+                  <button type="button" className={`btn ${splitType === 'itemized' ? 'btn-primary' : 'btn-secondary'}`} style={{ padding: '6px 12px', fontSize: '0.85rem', whiteSpace: 'nowrap' }} onClick={() => setSplitType('itemized')}>Itemized</button>
+                  <button type="button" className={`btn ${splitType === 'loan' ? 'btn-primary' : 'btn-secondary'}`} style={{ padding: '6px 12px', fontSize: '0.85rem', whiteSpace: 'nowrap' }} onClick={() => setSplitType('loan')}>Loan</button>
                 </div>
               </div>
+
+              {/* Percentage Split Panel */}
+              {splitType === 'percentage' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', margin: '8px 0', background: 'rgba(255,255,255,0.01)', padding: '16px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)' }}>
+                  <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
+                    Split by Percentages (%)
+                  </span>
+                  {participants.map(p => (
+                    <div key={p.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <span style={{ fontSize: '0.9rem' }}>{p.username}</span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <input
+                          type="number"
+                          min="0"
+                          max="100"
+                          className="form-control"
+                          placeholder="0"
+                          value={customPercentages[p.id] || ''}
+                          onChange={e => handlePercentageChange(p.id, e.target.value)}
+                          style={{ width: '70px', padding: '6px', textAlign: 'right' }}
+                        />
+                        <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>%</span>
+                      </div>
+                    </div>
+                  ))}
+                  <div style={{ 
+                    display: 'flex', 
+                    justifyContent: 'flex-end', 
+                    fontSize: '0.85rem', 
+                    fontWeight: 600, 
+                    color: Math.abs(getPercentageSum() - 100) < 0.05 ? 'var(--color-success)' : 'var(--color-danger)'
+                  }}>
+                    {Math.abs(getPercentageSum() - 100) < 0.05 ? (
+                      <span>✓ Percentages sum to 100%!</span>
+                    ) : (
+                      <span>Total: {getPercentageSum()}% (must equal 100%)</span>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Shares Split Panel */}
+              {splitType === 'shares' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', margin: '8px 0', background: 'rgba(255,255,255,0.01)', padding: '16px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)' }}>
+                  <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
+                    Split by Shares
+                  </span>
+                  {participants.map(p => (
+                    <div key={p.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <span style={{ fontSize: '0.9rem' }}>{p.username}</span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <input
+                          type="number"
+                          min="0"
+                          className="form-control"
+                          placeholder="1"
+                          value={customShares[p.id] || ''}
+                          onChange={e => handleSharesChange(p.id, e.target.value)}
+                          style={{ width: '70px', padding: '6px', textAlign: 'right' }}
+                        />
+                        <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>share(s)</span>
+                      </div>
+                    </div>
+                  ))}
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                    <span>Total shares: {getSharesSum()}</span>
+                  </div>
+                </div>
+              )}
 
               {/* 1. Itemized Split Panel */}
               {splitType === 'itemized' && (
@@ -801,6 +994,10 @@ export default function ExpenseModal({ isOpen, onClose, onSuccess, initialGroupI
                     userAmt = equalSplitShare;
                   } else if (splitType === 'unequal') {
                     userAmt = parseFloat(customAmounts[p.id]) || 0;
+                  } else if (splitType === 'percentage') {
+                    userAmt = getPercentageSplits()[p.id] || 0;
+                  } else if (splitType === 'shares') {
+                    userAmt = getSharesSplits()[p.id] || 0;
                   } else if (splitType === 'itemized') {
                     userAmt = itemizedSplitsCalculated[p.id] || 0;
                   } else {
@@ -860,8 +1057,8 @@ export default function ExpenseModal({ isOpen, onClose, onSuccess, initialGroupI
           )}
 
           <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '12px' }}>
-            <button type="button" className="btn btn-secondary" onClick={onClose}>Cancel</button>
-            <button type="submit" className="btn btn-primary">Save Expense</button>
+            <button type="button" className="btn btn-secondary" onClick={onClose}>{t('cancel')}</button>
+            <button type="submit" className="btn btn-primary">{t('save')}</button>
           </div>
         </form>
       </div>

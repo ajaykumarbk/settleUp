@@ -147,4 +147,37 @@ router.post('/', authenticateToken, async (req, res) => {
   }
 });
 
+// DELETE /api/settlements/:id - Delete a recorded settlement
+router.delete('/:id', authenticateToken, async (req, res) => {
+  const currentUserId = req.user.id;
+  const settlementId = parseInt(req.params.id);
+
+  try {
+    // Fetch settlement to check existence and authorization
+    const settlements = await query(
+      'SELECT * FROM settlements WHERE id = ?',
+      [settlementId]
+    );
+
+    if (settlements.length === 0) {
+      return res.status(404).json({ message: 'Settlement record not found' });
+    }
+
+    const settlement = settlements[0];
+
+    // Only the payer or payee of the settlement can delete it
+    if (settlement.payer_id !== currentUserId && settlement.payee_id !== currentUserId) {
+      return res.status(403).json({ message: 'You can only delete settlements that you are a part of' });
+    }
+
+    // Delete the settlement record
+    await query('DELETE FROM settlements WHERE id = ?', [settlementId]);
+
+    return res.json({ message: 'Settlement deleted successfully' });
+  } catch (error) {
+    console.error('Delete settlement error:', error);
+    return res.status(500).json({ message: 'Error deleting settlement' });
+  }
+});
+
 export default router;

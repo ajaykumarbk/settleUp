@@ -12,6 +12,7 @@ import {
   ArrowDownLeft
 } from 'lucide-react';
 import { api } from '../utils/api';
+import { t } from '../utils/translations';
 import { getCategoryIcon } from './Dashboard';
 import ExpenseModal from '../components/ExpenseModal';
 import SettleModal from '../components/SettleModal';
@@ -78,6 +79,17 @@ export default function FriendDetails({ triggerRefresh, refreshTrigger }) {
     }
   };
 
+  const handleDeleteSettlement = async (settlementId) => {
+    if (window.confirm('Delete this settlement record?')) {
+      const res = await api.settlements.delete(settlementId);
+      if (res.error) {
+        alert(res.message);
+      } else {
+        triggerRefresh();
+      }
+    }
+  };
+
   // Combine expenses and settlements into single timeline
   const activities = [
     ...expenses.map(e => ({ ...e, type: 'expense' })),
@@ -109,12 +121,12 @@ export default function FriendDetails({ triggerRefresh, refreshTrigger }) {
           {!isSettled && (
             <button className="btn btn-success" onClick={() => setIsSettleOpen(true)}>
               <HandCoins size={18} />
-              <span>Settle Up</span>
+              <span>{t('settleUp')}</span>
             </button>
           )}
           <button className="btn btn-primary" onClick={() => setIsExpenseOpen(true)}>
             <Plus size={18} />
-            <span>Add Bill</span>
+            <span>{t('addExpense')}</span>
           </button>
         </div>
       </div>
@@ -140,7 +152,7 @@ export default function FriendDetails({ triggerRefresh, refreshTrigger }) {
             Standing with {friend.username}
           </span>
           <h3 className={isOwed ? 'amt-positive' : isSettled ? 'amt-neutral' : 'amt-negative'} style={{ fontFamily: 'var(--font-display)', fontSize: '1.5rem', marginTop: '2px' }}>
-            {isSettled ? 'You are settled up' : isOwed ? `${friend.username} owes you $${netBalance.toFixed(2)}` : `You owe ${friend.username} $${Math.abs(netBalance).toFixed(2)}`}
+            {isSettled ? 'You are settled up' : isOwed ? `${friend.username} ${t('owedYou').toLowerCase()} $${netBalance.toFixed(2)}` : `${t('youOwe')} ${friend.username} $${Math.abs(netBalance).toFixed(2)}`}
           </h3>
         </div>
       </div>
@@ -194,9 +206,9 @@ export default function FriendDetails({ triggerRefresh, refreshTrigger }) {
                           {act.splits && act.splits.length === 1 && act.splits[0].userId === act.paidBy ? (
                             <span className="amt-neutral">personal expense</span>
                           ) : youPaid ? (
-                            <span className="amt-positive">you lent ${(act.amount - yourShare).toFixed(2)}</span>
+                            <span className="amt-positive">{t('owedYou').toLowerCase()} ${(act.amount - yourShare).toFixed(2)}</span>
                           ) : (
-                            <span className="amt-negative">you borrowed ${yourShare.toFixed(2)}</span>
+                            <span className="amt-negative">{t('youOwe').toLowerCase()} ${yourShare.toFixed(2)}</span>
                           )}
                         </div>
                       </div>
@@ -230,8 +242,9 @@ export default function FriendDetails({ triggerRefresh, refreshTrigger }) {
                         <HandCoins size={18} />
                       </div>
                       <div>
+                        <img src="" alt="" style={{ display: 'none' }} />
                         <h4 style={{ fontSize: '0.95rem', fontWeight: 600, color: 'var(--color-success)' }}>
-                          {youPaid ? `You paid ${friend.username}` : `${friend.username} paid You`}
+                          {youPaid ? `${t('youPaid')} ${friend.username}` : `${friend.username} paid You`}
                         </h4>
                         <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
                           {act.date} • Settlement Logged
@@ -239,8 +252,30 @@ export default function FriendDetails({ triggerRefresh, refreshTrigger }) {
                       </div>
                     </div>
 
-                    <div style={{ fontSize: '1.05rem', fontWeight: 600, color: 'var(--color-success)', marginRight: '38px' }}>
-                      ${act.amount.toFixed(2)}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '24px' }}>
+                      <div style={{ textAlign: 'right' }}>
+                        <div style={{ fontSize: '1.05rem', fontWeight: 600, color: 'var(--color-success)' }}>
+                          ${act.amount.toFixed(2)}
+                        </div>
+                      </div>
+
+                      <button 
+                        onClick={() => handleDeleteSettlement(act.id)}
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          color: 'var(--text-muted)',
+                          cursor: 'pointer',
+                          padding: '6px',
+                          borderRadius: '6px',
+                          transition: 'var(--transition-smooth)'
+                        }}
+                        title="Delete settlement"
+                        onMouseEnter={e => e.currentTarget.style.color = 'var(--color-danger)'}
+                        onMouseLeave={e => e.currentTarget.style.color = 'var(--text-muted)'}
+                      >
+                        <Trash2 size={16} />
+                      </button>
                     </div>
                   </div>
                 );

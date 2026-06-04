@@ -15,9 +15,11 @@ import {
   LayoutDashboard,
   PieChart,
   CreditCard as CreditCardIcon,
-  Search
+  Search,
+  Scan
 } from 'lucide-react';
 import { api } from '../utils/api';
+import { t } from '../utils/translations';
 import BalancesBanner from '../components/BalancesBanner';
 import ExpenseModal from '../components/ExpenseModal';
 import SettleModal from '../components/SettleModal';
@@ -42,7 +44,7 @@ export default function Dashboard({ triggerRefresh, refreshTrigger }) {
   const [allExpenses, setAllExpenses] = useState([]);
   
   // Tabs & Filters State
-  const [activeSubTab, setActiveSubTab] = useState('overview'); // 'overview', 'analytics', 'import'
+  const [activeSubTab, setActiveSubTab] = useState('overview'); // 'overview', 'analytics', 'import', 'self'
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('');
 
@@ -50,6 +52,15 @@ export default function Dashboard({ triggerRefresh, refreshTrigger }) {
   const [isExpenseOpen, setIsExpenseOpen] = useState(false);
   const [isSettleOpen, setIsSettleOpen] = useState(false);
   const [bankPrefill, setBankPrefill] = useState(null);
+
+  // Quick self-expense state
+  const [selfDescription, setSelfDescription] = useState('');
+  const [selfAmount, setSelfAmount] = useState('');
+  const [selfCategory, setSelfCategory] = useState('General');
+  const [selfSaving, setSelfSaving] = useState(false);
+  const [selfError, setSelfError] = useState('');
+  const [selfSuccess, setSelfSuccess] = useState(false);
+  const [expenseFriendId, setExpenseFriendId] = useState(null);
 
   const currentUser = api.auth.getUser();
 
@@ -103,6 +114,17 @@ export default function Dashboard({ triggerRefresh, refreshTrigger }) {
     }
   };
 
+  const handleDeleteSettlement = async (settlementId) => {
+    if (window.confirm('Are you sure you want to delete this payment record?')) {
+      const res = await api.settlements.delete(settlementId);
+      if (res.error) {
+        alert(res.message);
+      } else {
+        triggerRefresh();
+      }
+    }
+  };
+
   const handleBankImport = (txData) => {
     setBankPrefill(txData);
     setIsExpenseOpen(true);
@@ -111,15 +133,63 @@ export default function Dashboard({ triggerRefresh, refreshTrigger }) {
   const handleCloseExpenseModal = () => {
     setIsExpenseOpen(false);
     setBankPrefill(null);
+    setExpenseFriendId(null);
+  };
+
+  const handleQuickSelfSubmit = async (e) => {
+    e.preventDefault();
+    setSelfError('');
+    setSelfSuccess(false);
+
+    const amt = parseFloat(selfAmount);
+    if (!selfDescription.trim()) {
+      setSelfError('Please enter a description');
+      return;
+    }
+    if (isNaN(amt) || amt <= 0) {
+      setSelfError('Please enter a valid amount greater than 0');
+      return;
+    }
+
+    setSelfSaving(true);
+    const expenseData = {
+      description: selfDescription.trim(),
+      amount: amt,
+      currency: 'USD',
+      paidBy: currentUser.id,
+      groupId: null,
+      category: selfCategory,
+      date: new Date().toISOString().split('T')[0],
+      splits: [{ userId: currentUser.id, amount: amt }]
+    };
+
+    const res = await api.expenses.create(expenseData);
+    setSelfSaving(false);
+
+    if (res.error) {
+      setSelfError(res.message || 'Failed to save expense');
+    } else {
+      setSelfDescription('');
+      setSelfAmount('');
+      setSelfCategory('General');
+      setSelfSuccess(true);
+      triggerRefresh();
+      setTimeout(() => setSelfSuccess(false), 3000);
+    }
   };
 
   // Separate debtors and creditors
   const peopleOwed = friendBalances.filter(fb => fb.netBalance < 0);
   const peopleOwes = friendBalances.filter(fb => fb.netBalance > 0);
 
+  // Filter out personal expenses from the main shared Overview activity feed
+  const sharedExpenses = allExpenses
+    .filter(e => !(e.groupId === null && e.splits && e.splits.length === 1 && e.splits[0].userId == currentUser?.id))
+    .slice(0, 15);
+
   // Combine expenses and settlements into a single chronological activities feed
   const activities = [
-    ...recentExpenses.map(e => ({ ...e, type: 'expense' })),
+    ...sharedExpenses.map(e => ({ ...e, type: 'expense' })),
     ...recentSettlements.map(s => ({ ...s, type: 'settlement' }))
   ].sort((a, b) => new Date(b.date) - new Date(a.date));
 
@@ -135,12 +205,19 @@ export default function Dashboard({ triggerRefresh, refreshTrigger }) {
     return queryMatch && categoryMatch;
   });
 
+  // Gather and calculate personal/self tracker expenses
+  const personalExpenses = allExpenses
+    .filter(e => e.groupId === null && e.splits && e.splits.length === 1 && e.splits[0].userId == currentUser?.id)
+    .sort((a, b) => new Date(b.date) - new Date(a.date));
+  
+  const totalSelfExpenses = personalExpenses.reduce((sum, exp) => sum + exp.amount, 0);
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '28px' }}>
       {/* Dashboard Top Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
         <div>
-          <h1 style={{ fontSize: '2rem', fontFamily: 'var(--font-display)', fontWeight: 800 }}>Dashboard</h1>
+          <h1 style={{ fontSize: '2rem', fontFamily: 'var(--font-display)', fontWeight: 800 }}>{t('dashboard')}</h1>
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.95rem', marginTop: '4px' }}>
             Welcome back, {currentUser?.username}. Here is your balance summary.
           </p>
@@ -148,14 +225,15 @@ export default function Dashboard({ triggerRefresh, refreshTrigger }) {
         <div style={{ display: 'flex', gap: '12px' }}>
           <button className="btn btn-secondary" onClick={() => setIsSettleOpen(true)}>
             <HandCoins size={18} />
-            <span>Settle Up</span>
+            <span>{t('settleUp')}</span>
           </button>
           <button className="btn btn-primary" onClick={() => setIsExpenseOpen(true)}>
             <Plus size={18} />
-            <span>Add Expense</span>
+            <span>{t('addExpense')}</span>
           </button>
         </div>
       </div>
+
 
       {/* Pro Tabs Switcher */}
       <div style={{ 
@@ -177,7 +255,21 @@ export default function Dashboard({ triggerRefresh, refreshTrigger }) {
           }}
         >
           <LayoutDashboard size={16} />
-          <span>Overview</span>
+          <span>{t('dashboard')}</span>
+        </button>
+        <button
+          onClick={() => setActiveSubTab('self')}
+          className="btn"
+          style={{
+            background: activeSubTab === 'self' ? 'rgba(99, 102, 241, 0.15)' : 'transparent',
+            color: activeSubTab === 'self' ? 'var(--color-primary)' : 'var(--text-secondary)',
+            border: activeSubTab === 'self' ? '1px solid rgba(99, 102, 241, 0.3)' : '1px solid transparent',
+            padding: '8px 16px',
+            fontSize: '0.85rem'
+          }}
+        >
+          <FileText size={16} />
+          <span>{t('selfTracker')}</span>
         </button>
         <button
           onClick={() => setActiveSubTab('analytics')}
@@ -191,7 +283,7 @@ export default function Dashboard({ triggerRefresh, refreshTrigger }) {
           }}
         >
           <PieChart size={16} />
-          <span>Spending Analytics</span>
+          <span>{t('chartsGraphs')}</span>
         </button>
         <button
           onClick={() => setActiveSubTab('import')}
@@ -205,7 +297,7 @@ export default function Dashboard({ triggerRefresh, refreshTrigger }) {
           }}
         >
           <CreditCardIcon size={16} />
-          <span>Card Sync</span>
+          <span>{t('importPurchases')}</span>
         </button>
       </div>
 
@@ -229,7 +321,7 @@ export default function Dashboard({ triggerRefresh, refreshTrigger }) {
             <div className="glass-panel" style={{ padding: '24px' }}>
               <h3 style={{ fontSize: '1.15rem', marginBottom: '16px', color: 'var(--color-danger)', display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <ArrowDownLeft size={20} />
-                <span>You Owe</span>
+                <span>{t('youOwe')}</span>
               </h3>
               
               {peopleOwed.length === 0 ? (
@@ -244,7 +336,7 @@ export default function Dashboard({ triggerRefresh, refreshTrigger }) {
                         <img src={fb.friend.avatarUrl} alt={fb.friend.username} className="avatar avatar-sm" />
                         <div>
                           <h4 style={{ fontSize: '0.95rem' }}>{fb.friend.username}</h4>
-                          <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>you owe them</span>
+                          <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{t('youOwe').toLowerCase()}</span>
                         </div>
                       </div>
                       <span style={{ fontSize: '1.05rem', fontWeight: 600, color: 'var(--color-danger)' }}>
@@ -260,7 +352,7 @@ export default function Dashboard({ triggerRefresh, refreshTrigger }) {
             <div className="glass-panel" style={{ padding: '24px' }}>
               <h3 style={{ fontSize: '1.15rem', marginBottom: '16px', color: 'var(--color-success)', display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <ArrowUpRight size={20} />
-                <span>You Are Owed</span>
+                <span>{t('youAreOwed')}</span>
               </h3>
 
               {peopleOwes.length === 0 ? (
@@ -275,7 +367,7 @@ export default function Dashboard({ triggerRefresh, refreshTrigger }) {
                         <img src={fb.friend.avatarUrl} alt={fb.friend.username} className="avatar avatar-sm" />
                         <div>
                           <h4 style={{ fontSize: '0.95rem' }}>{fb.friend.username}</h4>
-                          <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>owes you</span>
+                          <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{t('owedYou').toLowerCase()}</span>
                         </div>
                       </div>
                       <span style={{ fontSize: '1.05rem', fontWeight: 600, color: 'var(--color-success)' }}>
@@ -303,7 +395,7 @@ export default function Dashboard({ triggerRefresh, refreshTrigger }) {
                   <Search size={14} style={{ position: 'absolute', left: '10px', color: 'var(--text-muted)' }} />
                   <input
                     type="text"
-                    placeholder="Search bills..."
+                    placeholder={t('expenseSearch')}
                     className="form-control"
                     value={searchQuery}
                     onChange={e => setSearchQuery(e.target.value)}
@@ -371,7 +463,7 @@ export default function Dashboard({ triggerRefresh, refreshTrigger }) {
                               {act.groupName && (
                                 <span style={{ color: 'var(--color-primary)', fontWeight: 500 }}>{act.groupName}</span>
                               )}
-                              <span>Paid by: {youPaid ? 'You' : act.paidByName}</span>
+                              <span>{t('youPaid')}: {youPaid ? 'You' : act.paidByName}</span>
                             </div>
                           </div>
                         </div>
@@ -384,9 +476,9 @@ export default function Dashboard({ triggerRefresh, refreshTrigger }) {
                               {act.splits && act.splits.length === 1 && act.splits[0].userId === act.paidBy ? (
                                 <span className="amt-neutral">personal expense</span>
                               ) : youPaid ? (
-                                <span className="amt-positive">you lent ${(act.amount - yourShare).toFixed(2)}</span>
+                                <span className="amt-positive">{t('owedYou').toLowerCase()} ${(act.amount - yourShare).toFixed(2)}</span>
                               ) : (
-                                <span className="amt-negative">you borrowed ${yourShare.toFixed(2)}</span>
+                                <span className="amt-negative">{t('youOwe').toLowerCase()} ${yourShare.toFixed(2)}</span>
                               )}
                             </div>
                           </div>
@@ -453,8 +545,30 @@ export default function Dashboard({ triggerRefresh, refreshTrigger }) {
                           </div>
                         </div>
 
-                        <div style={{ textAlign: 'right', fontWeight: 600, color: 'var(--color-success)', fontSize: '1.05rem', marginRight: '38px' }}>
-                          ${act.amount.toFixed(2)}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '24px' }}>
+                          <div style={{ textAlign: 'right' }}>
+                            <div style={{ fontSize: '1.05rem', fontWeight: 600, color: 'var(--color-success)' }}>
+                              ${act.amount.toFixed(2)}
+                            </div>
+                          </div>
+
+                          <button 
+                            onClick={() => handleDeleteSettlement(act.id)}
+                            style={{
+                              background: 'none',
+                              border: 'none',
+                              color: 'var(--text-muted)',
+                              cursor: 'pointer',
+                              padding: '6px',
+                              borderRadius: '6px',
+                              transition: 'var(--transition-smooth)'
+                            }}
+                            title="Delete settlement"
+                            onMouseEnter={e => e.currentTarget.style.color = 'var(--color-danger)'}
+                            onMouseLeave={e => e.currentTarget.style.color = 'var(--text-muted)'}
+                          >
+                            <Trash2 size={16} />
+                          </button>
                         </div>
                       </div>
                     );
@@ -464,6 +578,222 @@ export default function Dashboard({ triggerRefresh, refreshTrigger }) {
             )}
           </div>
         </>
+      )}
+
+      {activeSubTab === 'self' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+          {/* Balance summary card */}
+          <div className="glass-panel" style={{
+            padding: '24px',
+            background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.15) 0%, rgba(16, 185, 129, 0.05) 100%)',
+            border: '1px solid var(--border-color-glow)',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '8px'
+          }}>
+            <div style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', fontWeight: 500 }}>
+              {t('totalSelfExpenses')}
+            </div>
+            <div style={{
+              fontSize: '2.5rem',
+              fontFamily: 'var(--font-display)',
+              fontWeight: 800,
+              color: 'var(--text-primary)',
+              textShadow: '0 0 20px rgba(99, 102, 241, 0.2)'
+            }}>
+              ${totalSelfExpenses.toFixed(2)}
+            </div>
+          </div>
+
+          {/* Quick Entry Form Card */}
+          <div className="glass-panel" style={{ padding: '24px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <h3 style={{ fontSize: '1.1rem', fontWeight: 600 }}>Log Daily Expense</h3>
+              <button
+                type="button"
+                id="self-ocr-button"
+                className="btn btn-secondary"
+                style={{ padding: '6px 12px', fontSize: '0.8rem' }}
+                onClick={() => {
+                  setExpenseFriendId('personal');
+                  setIsExpenseOpen(true);
+                }}
+              >
+                <Scan size={14} style={{ marginRight: '6px' }} />
+                <span>Use OCR / Receipt Scanner</span>
+              </button>
+            </div>
+
+            {selfError && (
+              <div style={{
+                padding: '10px 14px',
+                background: 'var(--color-danger-bg)',
+                border: '1px solid var(--color-danger-border)',
+                borderRadius: 'var(--radius-md)',
+                color: 'var(--color-danger)',
+                fontSize: '0.85rem',
+                marginBottom: '14px'
+              }}>
+                {selfError}
+              </div>
+            )}
+
+            {selfSuccess && (
+              <div style={{
+                padding: '10px 14px',
+                background: 'var(--color-success-bg)',
+                border: '1px solid var(--color-success-border)',
+                borderRadius: 'var(--radius-md)',
+                color: 'var(--color-success)',
+                fontSize: '0.85rem',
+                marginBottom: '14px'
+              }}>
+                Expense logged successfully!
+              </div>
+            )}
+
+            <form onSubmit={handleQuickSelfSubmit} style={{
+              display: 'flex',
+              flexWrap: 'wrap',
+              gap: '16px',
+              alignItems: 'flex-end'
+            }}>
+              <div className="form-group" style={{ marginBottom: 0, flex: '2 1 200px' }}>
+                <label className="form-label" style={{ fontSize: '0.75rem' }}>{t('description')}</label>
+                <input
+                  type="text"
+                  id="self-desc-input"
+                  className="form-control"
+                  placeholder="e.g. Coffee, Lunch"
+                  value={selfDescription}
+                  onChange={e => setSelfDescription(e.target.value)}
+                  style={{ padding: '10px 14px', fontSize: '0.85rem' }}
+                  required
+                />
+              </div>
+
+              <div className="form-group" style={{ marginBottom: 0, flex: '1 1 100px' }}>
+                <label className="form-label" style={{ fontSize: '0.75rem' }}>{t('amount')} ($)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0.01"
+                  id="self-amount-input"
+                  className="form-control"
+                  placeholder="0.00"
+                  value={selfAmount}
+                  onChange={e => setSelfAmount(e.target.value)}
+                  style={{ padding: '10px 14px', fontSize: '0.85rem' }}
+                  required
+                />
+              </div>
+
+              <div className="form-group" style={{ marginBottom: 0, flex: '1 1 150px' }}>
+                <label className="form-label" style={{ fontSize: '0.75rem' }}>Category</label>
+                <select
+                  id="self-category-select"
+                  className="form-control"
+                  value={selfCategory}
+                  onChange={e => setSelfCategory(e.target.value)}
+                  style={{ padding: '10px 14px', fontSize: '0.85rem' }}
+                >
+                  <option value="General">General</option>
+                  <option value="Food">Food / Dining</option>
+                  <option value="Lodging">Lodging / Rent</option>
+                  <option value="Taxi">Taxi / Travel</option>
+                  <option value="Utilities">Utilities / Bills</option>
+                  <option value="Entertainment">Entertainment</option>
+                </select>
+              </div>
+
+              <button
+                type="submit"
+                id="self-submit-button"
+                className="btn btn-primary"
+                style={{ padding: '11px 20px', fontSize: '0.85rem', whiteSpace: 'nowrap' }}
+                disabled={selfSaving}
+              >
+                {selfSaving ? 'Saving...' : 'Add Expense'}
+              </button>
+            </form>
+          </div>
+
+          {/* Personal Spending Feed */}
+          <div className="glass-panel" style={{ padding: '24px' }}>
+            <h3 style={{ fontSize: '1.2rem', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <Clock size={20} style={{ color: 'var(--color-primary)' }} />
+              <span>Personal Spending Feed</span>
+            </h3>
+
+            {personalExpenses.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>
+                <FileText size={40} style={{ opacity: 0.2, marginBottom: '12px' }} />
+                <p style={{ fontSize: '0.95rem' }}>No personal expenses tracked yet.</p>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                {personalExpenses.map(exp => (
+                  <div key={exp.id} style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    padding: '14px 18px',
+                    borderRadius: 'var(--radius-md)',
+                    background: 'rgba(255,255,255,0.01)',
+                    border: '1px solid var(--border-color)',
+                    transition: 'var(--transition-smooth)'
+                  }} className="glass-panel-interactive">
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '16px', overflow: 'hidden' }}>
+                      {/* Icon */}
+                      <div style={{
+                        padding: '10px',
+                        background: 'rgba(255,255,255,0.03)',
+                        borderRadius: '10px',
+                        color: 'var(--text-secondary)'
+                      }}>
+                        {getCategoryIcon(exp.category)}
+                      </div>
+                      
+                      {/* Desc & Info */}
+                      <div>
+                        <h4 style={{ fontSize: '0.95rem', fontWeight: 600 }}>{exp.description}</h4>
+                        <div style={{ display: 'flex', gap: '12px', marginTop: '4px', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                          <span>{exp.date}</span>
+                          <span style={{ color: 'var(--color-primary)', fontWeight: 500 }}>Personal Expense</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Cost & Delete */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '24px' }}>
+                      <div style={{ fontSize: '1.05rem', fontWeight: 600 }}>
+                        ${exp.amount.toFixed(2)}
+                      </div>
+                      
+                      <button 
+                        onClick={() => handleDeleteExpense(exp.id)}
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          color: 'var(--text-muted)',
+                          cursor: 'pointer',
+                          padding: '6px',
+                          borderRadius: '6px',
+                          transition: 'var(--transition-smooth)'
+                        }}
+                        title="Delete personal expense"
+                        onMouseEnter={e => e.currentTarget.style.color = 'var(--color-danger)'}
+                        onMouseLeave={e => e.currentTarget.style.color = 'var(--text-muted)'}
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
       )}
 
       {activeSubTab === 'analytics' && (
@@ -480,6 +810,7 @@ export default function Dashboard({ triggerRefresh, refreshTrigger }) {
         onClose={handleCloseExpenseModal} 
         onSuccess={triggerRefresh} 
         prefilledData={bankPrefill}
+        initialFriendId={expenseFriendId}
       />
       <SettleModal 
         isOpen={isSettleOpen} 

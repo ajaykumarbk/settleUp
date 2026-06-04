@@ -19,6 +19,8 @@ import {
   Check
 } from 'lucide-react';
 import { api } from './utils/api';
+import { t } from './utils/translations';
+import { syncManager } from './utils/sync';
 
 // Pages
 import Login from './pages/Login';
@@ -26,7 +28,7 @@ import Dashboard from './pages/Dashboard';
 import GroupDetails from './pages/GroupDetails';
 import FriendDetails from './pages/FriendDetails';
 
-function NavigationSidebar({ refreshTrigger, triggerRefresh }) {
+function NavigationSidebar({ refreshTrigger, triggerRefresh, lang, handleLanguageChange }) {
   const [groups, setGroups] = useState([]);
   const [friends, setFriends] = useState([]);
   const [user, setUser] = useState(null);
@@ -49,6 +51,11 @@ function NavigationSidebar({ refreshTrigger, triggerRefresh }) {
   const [dbHealthy, setDbHealthy] = useState(true);
   const [dbError, setDbError] = useState(null);
 
+  // Network & Sync States
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
+  const [queueCount, setQueueCount] = useState(0);
+  const [syncStatus, setSyncStatus] = useState('synced'); // 'synced' | 'syncing' | 'success' | 'failed'
+
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -59,6 +66,49 @@ function NavigationSidebar({ refreshTrigger, triggerRefresh }) {
       loadSidebarData();
     }
   }, [refreshTrigger]);
+
+  useEffect(() => {
+    const updateOnlineStatus = () => {
+      setIsOnline(navigator.onLine);
+      if (navigator.onLine) {
+        syncManager.processQueue();
+      }
+    };
+
+    window.addEventListener('online', updateOnlineStatus);
+    window.addEventListener('offline', updateOnlineStatus);
+
+    // Initial queue count
+    setQueueCount(syncManager.getQueue().length);
+
+    const handleQueueChange = (e) => {
+      setQueueCount(e.detail.count);
+    };
+
+    const handleSyncStatus = (e) => {
+      setSyncStatus(e.detail.status);
+      if (e.detail.status === 'success') {
+        triggerRefresh();
+        setTimeout(() => setSyncStatus('synced'), 3000);
+      }
+    };
+
+    const handleSyncCompleted = () => {
+      triggerRefresh();
+    };
+
+    window.addEventListener('offline-queue-changed', handleQueueChange);
+    window.addEventListener('sync-status-changed', handleSyncStatus);
+    window.addEventListener('sync-completed', handleSyncCompleted);
+
+    return () => {
+      window.removeEventListener('online', updateOnlineStatus);
+      window.removeEventListener('offline', updateOnlineStatus);
+      window.removeEventListener('offline-queue-changed', handleQueueChange);
+      window.removeEventListener('sync-status-changed', handleSyncStatus);
+      window.removeEventListener('sync-completed', handleSyncCompleted);
+    };
+  }, [triggerRefresh]);
 
   const loadSidebarData = async () => {
     // Check DB Status
@@ -93,7 +143,9 @@ function NavigationSidebar({ refreshTrigger, triggerRefresh }) {
       setFriendInput('');
       setShowAddFriend(false);
       triggerRefresh();
-      navigate(`/friends/${res.friend.id}`);
+      if (res.friend && res.friend.id) {
+        navigate(`/friends/${res.friend.id}`);
+      }
     }
   };
 
@@ -109,7 +161,9 @@ function NavigationSidebar({ refreshTrigger, triggerRefresh }) {
       setGroupDescInput('');
       setShowAddGroup(false);
       triggerRefresh();
-      navigate(`/groups/${res.groupId}`);
+      if (res.groupId) {
+        navigate(`/groups/${res.groupId}`);
+      }
     }
   };
 
@@ -131,7 +185,7 @@ function NavigationSidebar({ refreshTrigger, triggerRefresh }) {
   return (
     <aside className="sidebar">
       {/* Brand Header */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '32px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '24px' }}>
         <div style={{
           background: 'linear-gradient(135deg, var(--color-primary), #3b82f6)',
           borderRadius: '10px',
@@ -156,7 +210,7 @@ function NavigationSidebar({ refreshTrigger, triggerRefresh }) {
       </div>
 
       {/* User Profile Summary */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px', borderRadius: 'var(--radius-md)', background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.03)', marginBottom: '24px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px', borderRadius: 'var(--radius-md)', background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.03)', marginBottom: '16px' }}>
         <img src={user.avatarUrl} alt={user.username} className="avatar avatar-sm" />
         <div style={{ overflow: 'hidden', flex: 1 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -165,6 +219,89 @@ function NavigationSidebar({ refreshTrigger, triggerRefresh }) {
           </div>
           <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{user.email}</span>
         </div>
+      </div>
+
+      {/* Connection / Sync Status Banner */}
+      <div style={{ marginBottom: '16px' }}>
+        {!isOnline ? (
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: '8px 12px',
+            borderRadius: 'var(--radius-md)',
+            background: 'var(--color-danger-bg)',
+            border: '1px solid var(--color-danger-border)',
+            color: 'var(--color-danger)',
+            fontSize: '0.8rem',
+            animation: 'paymentPulse 2s infinite ease-in-out'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--color-danger)', display: 'inline-block' }}></span>
+              <span>{t('offlineMode')}</span>
+            </div>
+            {queueCount > 0 && (
+              <span style={{ background: 'var(--color-danger)', color: '#fff', fontSize: '0.65rem', padding: '1px 5px', borderRadius: '8px', fontWeight: 600 }}>
+                {queueCount} queued
+              </span>
+            )}
+          </div>
+        ) : syncStatus === 'syncing' ? (
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+            padding: '8px 12px',
+            borderRadius: 'var(--radius-md)',
+            background: 'rgba(99, 102, 241, 0.12)',
+            border: '1px solid rgba(99, 102, 241, 0.2)',
+            color: 'var(--color-primary)',
+            fontSize: '0.8rem'
+          }}>
+            <div style={{
+              width: '10px',
+              height: '10px',
+              border: '2px solid rgba(255,255,255,0.1)',
+              borderTop: '2px solid var(--color-primary)',
+              borderRadius: '50%',
+              animation: 'paymentSpin 0.8s infinite linear',
+              display: 'inline-block'
+            }}></div>
+            <span>{t('syncing')} ({queueCount})</span>
+          </div>
+        ) : syncStatus === 'success' ? (
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+            padding: '8px 12px',
+            borderRadius: 'var(--radius-md)',
+            background: 'var(--color-success-bg)',
+            border: '1px solid var(--color-success-border)',
+            color: 'var(--color-success)',
+            fontSize: '0.8rem',
+            animation: 'successBounce 0.4s ease-out'
+          }}>
+            <Check size={12} />
+            <span>{t('cloudSynced')}</span>
+          </div>
+        ) : (
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+            padding: '8px 12px',
+            borderRadius: 'var(--radius-md)',
+            background: 'rgba(16, 185, 129, 0.04)',
+            border: '1px solid rgba(16, 185, 129, 0.08)',
+            color: 'var(--color-success)',
+            fontSize: '0.8rem',
+            opacity: 0.8
+          }}>
+            <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--color-success)', display: 'inline-block' }}></span>
+            <span>{t('cloudSynced')}</span>
+          </div>
+        )}
       </div>
 
       {/* Navigation Section */}
@@ -181,19 +318,19 @@ function NavigationSidebar({ refreshTrigger, triggerRefresh }) {
           }}
         >
           <LayoutDashboard size={18} />
-          <span>Dashboard</span>
+          <span>{t('dashboard')}</span>
         </Link>
 
         {/* Groups List */}
-        <div style={{ marginTop: '24px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px', padding: '0 4px' }}>
+        <div style={{ marginTop: '20px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px', padding: '0 4px' }}>
             <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              Groups
+              {t('groups')}
             </span>
             <button 
               onClick={() => setShowAddGroup(true)}
               style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
-              title="Create Group"
+              title={t('createGroup')}
             >
               <Plus size={16} />
             </button>
@@ -226,15 +363,15 @@ function NavigationSidebar({ refreshTrigger, triggerRefresh }) {
         </div>
 
         {/* Friends List */}
-        <div style={{ marginTop: '24px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px', padding: '0 4px' }}>
+        <div style={{ marginTop: '20px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px', padding: '0 4px' }}>
             <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              Friends
+              {t('friends')}
             </span>
             <button 
               onClick={() => setShowAddFriend(true)}
               style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
-              title="Add Friend"
+              title={t('addFriend')}
             >
               <UserPlus size={16} />
             </button>
@@ -319,14 +456,14 @@ function NavigationSidebar({ refreshTrigger, triggerRefresh }) {
         style={{ justifyContent: 'flex-start', background: 'rgba(244,63,94,0.05)', color: 'var(--color-danger)', borderColor: 'rgba(244,63,94,0.1)' }}
       >
         <LogOut size={16} />
-        <span>Sign Out</span>
+        <span>{t('logout')}</span>
       </button>
 
       {/* Add Friend Modal */}
       {showAddFriend && (
         <div className="modal-overlay" onClick={() => setShowAddFriend(false)}>
           <div className="modal-content glass-panel" onClick={e => e.stopPropagation()}>
-            <h3 style={{ marginBottom: '18px' }}>Add Friend</h3>
+            <h3 style={{ marginBottom: '18px' }}>{t('addFriend')}</h3>
             <form onSubmit={handleAddFriendSubmit}>
               <div className="form-group">
                 <label className="form-label">Username or Email</label>
@@ -341,8 +478,8 @@ function NavigationSidebar({ refreshTrigger, triggerRefresh }) {
                 />
               </div>
               <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '24px' }}>
-                <button type="button" className="btn btn-secondary" onClick={() => setShowAddFriend(false)}>Cancel</button>
-                <button type="submit" className="btn btn-primary">Add Friend</button>
+                <button type="button" className="btn btn-secondary" onClick={() => setShowAddFriend(false)}>{t('cancel')}</button>
+                <button type="submit" className="btn btn-primary">{t('addFriend')}</button>
               </div>
             </form>
           </div>
@@ -353,10 +490,10 @@ function NavigationSidebar({ refreshTrigger, triggerRefresh }) {
       {showAddGroup && (
         <div className="modal-overlay" onClick={() => setShowAddGroup(false)}>
           <div className="modal-content glass-panel" onClick={e => e.stopPropagation()}>
-            <h3 style={{ marginBottom: '18px' }}>Create New Group</h3>
+            <h3 style={{ marginBottom: '18px' }}>{t('createGroup')}</h3>
             <form onSubmit={handleAddGroupSubmit}>
               <div className="form-group">
-                <label className="form-label">Group Name</label>
+                <label className="form-label">{t('groupName')}</label>
                 <input 
                   type="text" 
                   className="form-control" 
@@ -368,7 +505,7 @@ function NavigationSidebar({ refreshTrigger, triggerRefresh }) {
                 />
               </div>
               <div className="form-group">
-                <label className="form-label">Description (Optional)</label>
+                <label className="form-label">{t('groupDesc')}</label>
                 <textarea 
                   className="form-control" 
                   value={groupDescInput}
@@ -378,8 +515,8 @@ function NavigationSidebar({ refreshTrigger, triggerRefresh }) {
                 />
               </div>
               <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '24px' }}>
-                <button type="button" className="btn btn-secondary" onClick={() => setShowAddGroup(false)}>Cancel</button>
-                <button type="submit" className="btn btn-primary">Create Group</button>
+                <button type="button" className="btn btn-secondary" onClick={() => setShowAddGroup(false)}>{t('cancel')}</button>
+                <button type="submit" className="btn btn-primary">{t('createGroup')}</button>
               </div>
             </form>
           </div>
@@ -401,6 +538,24 @@ function NavigationSidebar({ refreshTrigger, triggerRefresh }) {
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+              {/* Language Selection */}
+              <div className="form-group" style={{ borderBottom: '1px solid var(--border-color)', paddingBottom: '16px' }}>
+                <label className="form-label">🌐 {t('language')}</label>
+                <select
+                  className="form-control"
+                  value={lang}
+                  onChange={e => handleLanguageChange(e.target.value)}
+                >
+                  <option value="en">English</option>
+                  <option value="es">Español (Spanish)</option>
+                  <option value="fr">Français (French)</option>
+                  <option value="de">Deutsch (German)</option>
+                  <option value="zh">中文 (Chinese)</option>
+                  <option value="ja">日本語 (Japanese)</option>
+                  <option value="hi">हिन्दी (Hindi)</option>
+                </select>
+              </div>
+
               {/* Account Quota */}
               <div className="glass-panel" style={{ padding: '16px', background: 'rgba(255,255,255,0.01)', border: '1px solid var(--border-color)' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', marginBottom: '6px' }}>
@@ -488,7 +643,7 @@ function NavigationSidebar({ refreshTrigger, triggerRefresh }) {
   );
 }
 
-function MainApp() {
+function MainApp({ lang, handleLanguageChange }) {
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [dbStatus, setDbStatus] = useState({ healthy: true, error: null });
 
@@ -510,7 +665,12 @@ function MainApp() {
   return (
     <div className="app-container">
       {/* Sidebar Navigation */}
-      <NavigationSidebar refreshTrigger={refreshTrigger} triggerRefresh={triggerRefresh} />
+      <NavigationSidebar 
+        refreshTrigger={refreshTrigger} 
+        triggerRefresh={triggerRefresh} 
+        lang={lang} 
+        handleLanguageChange={handleLanguageChange} 
+      />
 
       {/* Main Pages */}
       <main className="main-content">
@@ -552,6 +712,12 @@ function MainApp() {
 
 export default function App() {
   const token = localStorage.getItem('splitwise_token');
+  const [lang, setLang] = useState(localStorage.getItem('splitwise_language') || 'en');
+
+  const handleLanguageChange = (newLang) => {
+    localStorage.setItem('splitwise_language', newLang);
+    setLang(newLang);
+  };
 
   return (
     <Router>
@@ -563,7 +729,7 @@ export default function App() {
         <Route 
           path="/*" 
           element={
-            token ? <MainApp /> : <NavigateToLogin />
+            token ? <MainApp lang={lang} handleLanguageChange={handleLanguageChange} /> : <NavigateToLogin />
           } 
         />
       </Routes>

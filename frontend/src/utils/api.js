@@ -1,10 +1,74 @@
-// API integration client for Splitwise Clone
+import { syncManager } from './sync';
 
 const API_BASE = ''; // Relying on Vite proxy to map to http://localhost:5000
 
 async function request(url, options = {}) {
   const token = localStorage.getItem('splitwise_token');
-  
+  const method = options.method || 'GET';
+  const isGet = method === 'GET';
+
+  // Intercept if offline
+  if (syncManager.isOffline()) {
+    if (isGet) {
+      console.log(`Offline Mode: Serving cached data for ${url}`);
+      const cached = syncManager.getCachedData(url);
+      if (cached !== null) return cached;
+      
+      // Provide default fallback values if cache doesn't exist
+      if (url.includes('/api/friends/balances')) return { owes_you_total: 0, you_owe_total: 0, net_balance: 0, breakdown: [] };
+      if (url.includes('/api/friends') || url.includes('/api/groups') || url.includes('/api/expenses') || url.includes('/api/settlements')) {
+        return [];
+      }
+      if (url.includes('/api/auth/me')) {
+        try {
+          const userStr = localStorage.getItem('splitwise_user');
+          if (userStr) return JSON.parse(userStr);
+        } catch {}
+        return { error: true, message: 'Offline' };
+      }
+      return {};
+    } else {
+      console.log(`Offline Mode: Queueing mutating request ${method} ${url}`);
+      let parsedBody = null;
+      if (options.body) {
+        try {
+          parsedBody = JSON.parse(options.body);
+        } catch {}
+      }
+      
+      syncManager.addToQueue(url, method, parsedBody);
+      
+      // Return a simulated success response
+      if (url.includes('/api/expenses')) {
+        return {
+          id: `offline_exp_${Date.now()}`,
+          description: parsedBody?.description || 'Offline Expense',
+          amount: parsedBody?.amount || 0,
+          currency: parsedBody?.currency || 'USD',
+          date: parsedBody?.date || new Date().toISOString().split('T')[0],
+          is_recurring: parsedBody?.isRecurring ? 1 : 0,
+          recurrence_interval: parsedBody?.recurrenceInterval || null,
+          payer_id: parsedBody?.payerId,
+          group_id: parsedBody?.groupId || null,
+          splits: parsedBody?.splits || [],
+          message: 'Saved offline'
+        };
+      }
+      if (url.includes('/api/settlements')) {
+        return {
+          id: `offline_settle_${Date.now()}`,
+          payer_id: parsedBody?.payerId,
+          payee_id: parsedBody?.payeeId,
+          amount: parsedBody?.amount || 0,
+          date: parsedBody?.date || new Date().toISOString().split('T')[0],
+          group_id: parsedBody?.groupId || null,
+          message: 'Settlement saved offline'
+        };
+      }
+      return { success: true, message: 'Saved offline', id: `offline_item_${Date.now()}` };
+    }
+  }
+
   const headers = {
     'Content-Type': 'application/json',
     ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
@@ -49,9 +113,35 @@ async function request(url, options = {}) {
       };
     }
 
+    // Cache successful GET requests
+    if (isGet) {
+      syncManager.setCachedData(url, data);
+    }
+
     return data;
   } catch (err) {
     console.error(`API Fetch Error (${url}):`, err);
+    
+    // If standard fetch fails due to network (server down or client offline), fallback to cache for GETs
+    if (isGet) {
+      const cached = syncManager.getCachedData(url);
+      if (cached !== null) {
+        console.log(`Network error. Serving cached data for ${url}`);
+        return cached;
+      }
+    } else {
+      // Queue mutating requests when server is unreachable
+      console.log(`Network error. Queueing mutating request ${method} ${url}`);
+      let parsedBody = null;
+      if (options.body) {
+        try {
+          parsedBody = JSON.parse(options.body);
+        } catch {}
+      }
+      syncManager.addToQueue(url, method, parsedBody);
+      return { success: true, message: 'Connection failed, queued offline', id: `offline_item_${Date.now()}` };
+    }
+
     return {
       error: true,
       message: 'Failed to connect to backend server. Make sure node backend is running.'
@@ -152,6 +242,9 @@ export const api = {
     updateDefaultSplit: async (id, defaultSplitType, defaultSplitShares) => request(`/api/groups/${id}/default-split`, {
       method: 'PUT',
       body: JSON.stringify({ defaultSplitType, defaultSplitShares })
+    }),
+    delete: async (id) => request(`/api/groups/${id}`, {
+      method: 'DELETE'
     })
   },
 
@@ -202,6 +295,9 @@ export const api = {
     create: async (settleData) => request('/api/settlements', {
       method: 'POST',
       body: JSON.stringify(settleData)
+    }),
+    delete: async (id) => request(`/api/settlements/${id}`, {
+      method: 'DELETE'
     })
   },
 

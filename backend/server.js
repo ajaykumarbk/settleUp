@@ -4,7 +4,7 @@ import dotenv from 'dotenv';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { getDbPool } from './config/db.js';
+import { getDbPool, query } from './config/db.js';
 
 // Import routes
 import authRoutes from './routes/auth.js';
@@ -40,11 +40,81 @@ app.use('/uploads', express.static(uploadsDir));
 // Database connection status tracking
 let dbConnectionError = null;
 
+// Recurring Expense Processor Daemon
+async function processRecurringExpenses() {
+  try {
+    const today = new Date().toISOString().split('T')[0];
+    const recurring = await query(
+      `SELECT * FROM expenses WHERE is_recurring = 1 AND next_recurrence_date <= ?`,
+      [today]
+    );
+
+    if (recurring.length === 0) return;
+
+    console.log(`⏰ Processing ${recurring.length} recurring expenses...`);
+
+    for (const exp of recurring) {
+      const expDate = exp.next_recurrence_date;
+      
+      // 1. Create duplicated expense on the next_recurrence_date (non-recurring instance)
+      const result = await query(
+        `INSERT INTO expenses (description, amount, paid_by, group_id, category, date, receipt_url, is_recurring, recurrence_interval, next_recurrence_date)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 0, NULL, NULL)`,
+        [exp.description, exp.amount, exp.paid_by, exp.group_id, exp.category, expDate, exp.receipt_url]
+      );
+      const newExpenseId = result.insertId;
+
+      // 2. Fetch splits of original expense
+      const splits = await query(
+        `SELECT user_id, amount FROM expense_splits WHERE expense_id = ?`,
+        [exp.id]
+      );
+
+      // 3. Insert splits for the duplicated expense
+      for (const split of splits) {
+        await query(
+          `INSERT INTO expense_splits (expense_id, user_id, amount)
+           VALUES (?, ?, ?)`,
+          [newExpenseId, split.user_id, split.amount]
+        );
+      }
+
+      // 4. Calculate the next recurrence date
+      const interval = exp.recurrence_interval || 'monthly';
+      const nextDate = new Date(expDate);
+      if (interval === 'daily') {
+        nextDate.setDate(nextDate.getDate() + 1);
+      } else if (interval === 'weekly') {
+        nextDate.setDate(nextDate.getDate() + 7);
+      } else if (interval === 'monthly') {
+        nextDate.setMonth(nextDate.getMonth() + 1);
+      } else if (interval === 'yearly') {
+        nextDate.setFullYear(nextDate.getFullYear() + 1);
+      }
+      const nextDateStr = nextDate.toISOString().split('T')[0];
+
+      // 5. Update next_recurrence_date of original template expense
+      await query(
+        `UPDATE expenses SET next_recurrence_date = ? WHERE id = ?`,
+        [nextDateStr, exp.id]
+      );
+
+      console.log(`✅ Duplicated recurring expense "${exp.description}" for date ${expDate}. Next recurrence set to ${nextDateStr}.`);
+    }
+  } catch (err) {
+    console.error('❌ Error processing recurring expenses:', err.message);
+  }
+}
+
 // Initialize Database Connection
 async function connectDatabase() {
   try {
     await getDbPool();
     dbConnectionError = null;
+    
+    // Process due recurring expenses immediately and start periodic checks
+    await processRecurringExpenses();
+    setInterval(processRecurringExpenses, 30 * 60 * 1000); // run every 30 minutes
   } catch (error) {
     dbConnectionError = error.message;
     console.error('⚠️ Server starting in Degraded Mode (Database offline).');

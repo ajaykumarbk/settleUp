@@ -128,7 +128,7 @@ router.get('/', authenticateToken, async (req, res) => {
 
 // POST /api/expenses - Add a new expense with splitting logic
 router.post('/', authenticateToken, async (req, res) => {
-  const { description, amount, paidBy, groupId, category, date, splits, receiptUrl } = req.body;
+  const { description, amount, paidBy, groupId, category, date, splits, receiptUrl, isRecurring, recurrenceInterval, nextRecurrenceDate } = req.body;
   const currentUserId = req.user.id;
 
   if (!description || !amount || !splits || !Array.isArray(splits) || splits.length === 0) {
@@ -140,6 +140,28 @@ router.post('/', authenticateToken, async (req, res) => {
   const finalGroupId = groupId ? parseInt(groupId) : null;
   const finalCategory = category || 'General';
   const finalDate = date ? new Date(date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0];
+
+  // Recurrence calculations
+  const isRecurringVal = isRecurring ? 1 : 0;
+  const recurrenceIntervalVal = isRecurringVal ? (recurrenceInterval || 'monthly') : null;
+  let nextRecurrenceDateVal = null;
+  if (isRecurringVal) {
+    if (nextRecurrenceDate) {
+      nextRecurrenceDateVal = new Date(nextRecurrenceDate).toISOString().split('T')[0];
+    } else {
+      const nextDate = new Date(finalDate);
+      if (recurrenceIntervalVal === 'daily') {
+        nextDate.setDate(nextDate.getDate() + 1);
+      } else if (recurrenceIntervalVal === 'weekly') {
+        nextDate.setDate(nextDate.getDate() + 7);
+      } else if (recurrenceIntervalVal === 'monthly') {
+        nextDate.setMonth(nextDate.getMonth() + 1);
+      } else if (recurrenceIntervalVal === 'yearly') {
+        nextDate.setFullYear(nextDate.getFullYear() + 1);
+      }
+      nextRecurrenceDateVal = nextDate.toISOString().split('T')[0];
+    }
+  }
 
   // Validate split amounts match total amount
   const sumOfSplits = splits.reduce((sum, s) => sum + parseFloat(s.amount), 0);
@@ -173,9 +195,9 @@ router.post('/', authenticateToken, async (req, res) => {
 
     // 1. Insert into expenses table
     const result = await query(
-      `INSERT INTO expenses (description, amount, paid_by, group_id, category, date, receipt_url)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [description, parsedAmount, finalPaidBy, finalGroupId, finalCategory, finalDate, receiptUrl || null]
+      `INSERT INTO expenses (description, amount, paid_by, group_id, category, date, receipt_url, is_recurring, recurrence_interval, next_recurrence_date)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [description, parsedAmount, finalPaidBy, finalGroupId, finalCategory, finalDate, receiptUrl || null, isRecurringVal, recurrenceIntervalVal, nextRecurrenceDateVal]
     );
 
     const expenseId = result.insertId;
@@ -199,6 +221,9 @@ router.post('/', authenticateToken, async (req, res) => {
       category: finalCategory,
       date: finalDate,
       receiptUrl,
+      isRecurring: isRecurringVal,
+      recurrenceInterval: recurrenceIntervalVal,
+      nextRecurrenceDate: nextRecurrenceDateVal,
       splits
     });
   } catch (error) {

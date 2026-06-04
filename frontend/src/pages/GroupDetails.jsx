@@ -12,6 +12,7 @@ import {
   Check
 } from 'lucide-react';
 import { api } from '../utils/api';
+import { t } from '../utils/translations';
 import { getCategoryIcon } from './Dashboard';
 import ExpenseModal from '../components/ExpenseModal';
 import SettleModal from '../components/SettleModal';
@@ -19,6 +20,7 @@ import SettleModal from '../components/SettleModal';
 export default function GroupDetails({ triggerRefresh, refreshTrigger }) {
   const { id } = useParams();
   const groupId = parseInt(id);
+  const navigate = useNavigate();
 
   const [group, setGroup] = useState(null);
   const [members, setMembers] = useState([]);
@@ -135,6 +137,29 @@ export default function GroupDetails({ triggerRefresh, refreshTrigger }) {
     }
   };
 
+  const handleDeleteSettlement = async (settlementId) => {
+    if (window.confirm('Delete this group settlement record?')) {
+      const res = await api.settlements.delete(settlementId);
+      if (res.error) {
+        alert(res.message);
+      } else {
+        triggerRefresh();
+      }
+    }
+  };
+
+  const handleDeleteGroup = async () => {
+    if (window.confirm(`Are you sure you want to delete the group "${group?.name}"? This will delete all expenses and splits inside the group and cannot be undone.`)) {
+      const res = await api.groups.delete(groupId);
+      if (res.error) {
+        alert(res.message);
+      } else {
+        triggerRefresh();
+        navigate('/');
+      }
+    }
+  };
+
   const triggerSettleShortcut = (debt) => {
     const currentUserId = currentUser?.id;
     const isPayerMe = debt.from === currentUserId;
@@ -188,12 +213,18 @@ export default function GroupDetails({ triggerRefresh, refreshTrigger }) {
             {group.description || 'Group bills and split logs.'}
           </p>
         </div>
-        <div style={{ display: 'flex', gap: '12px' }}>
+        <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
           {isCreatorMe && (
-            <button className="btn btn-secondary" onClick={() => setShowSettings(true)} title="Group Settings">
-              <Settings size={18} />
-              <span>Settings Presets</span>
-            </button>
+            <>
+              <button className="btn btn-secondary" onClick={() => setShowSettings(true)} title="Group Settings">
+                <Settings size={18} />
+                <span>Settings Presets</span>
+              </button>
+              <button className="btn btn-danger" onClick={handleDeleteGroup} title="Delete Group">
+                <Trash2 size={18} />
+                <span>Delete Group</span>
+              </button>
+            </>
           )}
           <button className="btn btn-secondary" onClick={() => setShowAddMember(true)}>
             <UserPlus size={18} />
@@ -201,7 +232,7 @@ export default function GroupDetails({ triggerRefresh, refreshTrigger }) {
           </button>
           <button className="btn btn-primary" onClick={() => setIsExpenseOpen(true)}>
             <Plus size={18} />
-            <span>Add Expense</span>
+            <span>{t('addExpense')}</span>
           </button>
         </div>
       </div>
@@ -218,7 +249,7 @@ export default function GroupDetails({ triggerRefresh, refreshTrigger }) {
           Your standing in this group:
         </span>
         <h3 className={myGroupBalance > 0 ? 'amt-positive' : myGroupBalance < 0 ? 'amt-negative' : 'amt-neutral'} style={{ fontFamily: 'var(--font-display)', fontSize: '1.4rem' }}>
-          {myGroupBalance > 0 ? `You are owed $${myGroupBalance.toFixed(2)}` : myGroupBalance < 0 ? `You owe $${Math.abs(myGroupBalance).toFixed(2)}` : 'You are settled up'}
+          {myGroupBalance > 0 ? `${t('youAreOwed')} $${myGroupBalance.toFixed(2)}` : myGroupBalance < 0 ? `${t('youOwe')} $${Math.abs(myGroupBalance).toFixed(2)}` : 'You are settled up'}
         </h3>
       </div>
 
@@ -353,7 +384,7 @@ export default function GroupDetails({ triggerRefresh, refreshTrigger }) {
                         <div>
                           <h4 style={{ fontSize: '0.9rem', fontWeight: 600 }}>{act.description}</h4>
                           <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                            {act.date} • Paid by: {youPaid ? 'You' : act.paidByName}
+                            {act.date} • {t('youPaid')}: {youPaid ? 'You' : act.paidByName}
                           </span>
                         </div>
                       </div>
@@ -365,9 +396,9 @@ export default function GroupDetails({ triggerRefresh, refreshTrigger }) {
                             {act.splits && act.splits.length === 1 && act.splits[0].userId === act.paidBy ? (
                               <span className="amt-neutral">personal expense</span>
                             ) : youPaid ? (
-                              <span className="amt-positive">you lent ${(act.amount - yourShare).toFixed(2)}</span>
+                              <span className="amt-positive">{t('owedYou').toLowerCase()} ${(act.amount - yourShare).toFixed(2)}</span>
                             ) : (
-                              <span className="amt-negative">you owe ${yourShare.toFixed(2)}</span>
+                              <span className="amt-negative">{t('youOwe').toLowerCase()} ${yourShare.toFixed(2)}</span>
                             )}
                           </div>
                         </div>
@@ -402,7 +433,7 @@ export default function GroupDetails({ triggerRefresh, refreshTrigger }) {
                         </div>
                         <div>
                           <h4 style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--color-success)' }}>
-                            {youPaid ? `You settled up with ${act.payeeName}` : `${act.payerName} paid You`}
+                            {youPaid ? `${t('youPaid')} ${act.payeeName}` : `${act.payerName} paid You`}
                           </h4>
                           <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
                             {act.date} • Settlement Recorded
@@ -410,8 +441,30 @@ export default function GroupDetails({ triggerRefresh, refreshTrigger }) {
                         </div>
                       </div>
 
-                      <div style={{ fontSize: '0.95rem', fontWeight: 600, color: 'var(--color-success)', marginRight: '30px' }}>
-                        ${act.amount.toFixed(2)}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '24px' }}>
+                        <div style={{ textAlign: 'right' }}>
+                          <div style={{ fontSize: '0.95rem', fontWeight: 600, color: 'var(--color-success)' }}>
+                            ${act.amount.toFixed(2)}
+                          </div>
+                        </div>
+
+                        <button 
+                          onClick={() => handleDeleteSettlement(act.id)}
+                          style={{
+                            background: 'none',
+                            border: 'none',
+                            color: 'var(--text-muted)',
+                            cursor: 'pointer',
+                            padding: '4px',
+                            borderRadius: '4px',
+                            transition: 'var(--transition-smooth)'
+                          }}
+                          title="Delete settlement"
+                          onMouseEnter={e => e.currentTarget.style.color = 'var(--color-danger)'}
+                          onMouseLeave={e => e.currentTarget.style.color = 'var(--text-muted)'}
+                        >
+                          <Trash2 size={14} />
+                        </button>
                       </div>
                     </div>
                   );

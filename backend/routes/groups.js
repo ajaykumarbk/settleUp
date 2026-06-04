@@ -316,4 +316,45 @@ router.put('/:id/default-split', authenticateToken, async (req, res) => {
   }
 });
 
+// DELETE /api/groups/:id - Delete an existing group
+router.delete('/:id', authenticateToken, async (req, res) => {
+  const groupId = parseInt(req.params.id);
+  const currentUserId = req.user.id;
+
+  try {
+    // Verify group exists and check creator
+    const groups = await query('SELECT created_by FROM `groups` WHERE id = ?', [groupId]);
+    if (groups.length === 0) {
+      return res.status(404).json({ message: 'Group not found' });
+    }
+
+    if (groups[0].created_by !== currentUserId) {
+      return res.status(403).json({ message: 'Only the group creator can delete this group' });
+    }
+
+    // Clean up members
+    await query('DELETE FROM group_members WHERE group_id = ?', [groupId]);
+    
+    // Fetch group expenses to delete splits
+    const groupExpenses = await query('SELECT id FROM expenses WHERE group_id = ?', [groupId]);
+    const groupExpenseIds = groupExpenses.map(e => e.id);
+    
+    if (groupExpenseIds.length > 0) {
+      await query(`DELETE FROM expense_splits WHERE expense_id IN (${groupExpenseIds.join(',')})`);
+      await query('DELETE FROM expenses WHERE group_id = ?', [groupId]);
+    }
+
+    // Delete group settlements
+    await query('DELETE FROM settlements WHERE group_id = ?', [groupId]);
+
+    // Delete the group itself
+    await query('DELETE FROM `groups` WHERE id = ?', [groupId]);
+
+    return res.json({ message: 'Group deleted successfully' });
+  } catch (error) {
+    console.error('Delete group error:', error);
+    return res.status(500).json({ message: 'Error deleting group' });
+  }
+});
+
 export default router;

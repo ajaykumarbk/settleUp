@@ -40,6 +40,42 @@ async function migrate() {
       }
     }
 
+    // 4. Add is_recurring to expenses table
+    try {
+      await query(`ALTER TABLE expenses ADD COLUMN is_recurring TINYINT DEFAULT 0`);
+      console.log('✅ Added is_recurring column to expenses table.');
+    } catch (err) {
+      if (err.errno === 1060) {
+        console.log('ℹ️ Column is_recurring already exists in expenses table.');
+      } else {
+        throw err;
+      }
+    }
+
+    // 5. Add recurrence_interval to expenses table
+    try {
+      await query(`ALTER TABLE expenses ADD COLUMN recurrence_interval VARCHAR(20) DEFAULT NULL`);
+      console.log('✅ Added recurrence_interval column to expenses table.');
+    } catch (err) {
+      if (err.errno === 1060) {
+        console.log('ℹ️ Column recurrence_interval already exists in expenses table.');
+      } else {
+        throw err;
+      }
+    }
+
+    // 6. Add next_recurrence_date to expenses table
+    try {
+      await query(`ALTER TABLE expenses ADD COLUMN next_recurrence_date DATE DEFAULT NULL`);
+      console.log('✅ Added next_recurrence_date column to expenses table.');
+    } catch (err) {
+      if (err.errno === 1060) {
+        console.log('ℹ️ Column next_recurrence_date already exists in expenses table.');
+      } else {
+        throw err;
+      }
+    }
+
     console.log('🎉 Database migrations completed successfully!');
     process.exit(0);
   } catch (error) {
