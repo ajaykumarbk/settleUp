@@ -154,10 +154,22 @@ app.use('/api/groups', groupRoutes);
 app.use('/api/expenses', expenseRoutes);
 app.use('/api/settlements', settlementRoutes);
 
-// Root route
-app.get('/', (req, res) => {
-  res.send('Splitwise Clone API is running. Health check at /api/status');
-});
+// Serve frontend static assets in production
+if (process.env.NODE_ENV === 'production') {
+  const distDir = path.join(__dirname, 'dist');
+  app.use(express.static(distDir));
+  app.get('*', (req, res, next) => {
+    if (req.path.startsWith('/api') || req.path.startsWith('/uploads')) {
+      return next();
+    }
+    res.sendFile(path.join(distDir, 'index.html'));
+  });
+} else {
+  // Root route
+  app.get('/', (req, res) => {
+    res.send('Splitwise Clone API is running. Health check at /api/status');
+  });
+}
 
 // Global Error Handler
 app.use((err, req, res, next) => {

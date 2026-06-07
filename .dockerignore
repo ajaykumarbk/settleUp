@@ -1,0 +1,36 @@
+# Node modules
+node_modules/
+**/node_modules/
+
+# Local build artifacts
+dist/
+**/dist/
+
+# Local upload files
+backend/uploads/*
+!backend/uploads/.gitkeep
+
+# Environment variables
+.env
+**/ .env
+.env*.local
+
+# Git and metadata
+.git/
+.gitignore
+.gitattributes
+
+# Editor configuration and OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Documentation and Docker files
+Dockerfile
+.dockerignore
+docker-compose*.yml
+README.md
+task.md
+implementation_plan.md
+walkthrough.md
