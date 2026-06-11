@@ -11,9 +11,9 @@ services:
     environment:
       - PORT=5000
       - NODE_ENV=development
-      - DB_HOST=host.docker.internal
+      - DB_HOST=140.245.237.157
       - DB_PORT=3306
-      - DB_USER=splitwise_user
+      - DB_USER=wms_app
       - DB_PASSWORD=Ajaykumar@12.
       - DB_NAME=splitwise
       - JWT_SECRET=splitwise_jwt_secret_dev_key_987654321

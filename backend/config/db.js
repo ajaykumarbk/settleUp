@@ -78,6 +78,30 @@ async function initializeDatabase() {
     } else {
       console.log('✨ Database tables already exist. Skipping initialization.');
     }
+
+    // Auto-run schema migrations to ensure new columns exist
+    console.log('🔄 Checking database migrations/schema updates...');
+    const migrations = [
+      { table: 'expenses', sql: `ALTER TABLE expenses ADD COLUMN receipt_url VARCHAR(255) DEFAULT NULL`, col: 'receipt_url' },
+      { table: 'groups', sql: `ALTER TABLE \`groups\` ADD COLUMN default_split_type VARCHAR(20) DEFAULT 'equal'`, col: 'default_split_type' },
+      { table: 'groups', sql: `ALTER TABLE \`groups\` ADD COLUMN default_split_shares TEXT DEFAULT NULL`, col: 'default_split_shares' },
+      { table: 'expenses', sql: `ALTER TABLE expenses ADD COLUMN is_recurring TINYINT DEFAULT 0`, col: 'is_recurring' },
+      { table: 'expenses', sql: `ALTER TABLE expenses ADD COLUMN recurrence_interval VARCHAR(20) DEFAULT NULL`, col: 'recurrence_interval' },
+      { table: 'expenses', sql: `ALTER TABLE expenses ADD COLUMN next_recurrence_date DATE DEFAULT NULL`, col: 'next_recurrence_date' }
+    ];
+
+    for (const migration of migrations) {
+      try {
+        await connection.query(migration.sql);
+        console.log(`✅ Applied migration: Added ${migration.col} column to ${migration.table} table.`);
+      } catch (err) {
+        if (err.errno === 1060 || err.code === 'ER_DUP_FIELDNAME') {
+          // Field already exists, skip
+        } else {
+          console.error(`⚠️ Migration error for ${migration.col}:`, err.message);
+        }
+      }
+    }
     
     connection.release();
     isDbInitialized = true;
