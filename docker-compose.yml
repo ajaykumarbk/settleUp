@@ -1,0 +1,34 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: splitwise-backend
+    ports:
+      - "5000:5000"
+    environment:
+      - PORT=5000
+      - NODE_ENV=development
+      - DB_HOST=localhost
+      - DB_PORT=3306
+      - DB_USER=splitwise_user
+      - DB_PASSWORD=Ajaykumar@12.
+      - DB_NAME=splitwise
+      - JWT_SECRET=splitwise_jwt_secret_dev_key_987654321
+      - JWT_EXPIRE=7d
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: always
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: splitwise-frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    restart: always
