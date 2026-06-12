@@ -20,7 +20,7 @@ spec:
       containers:
         - name: backend
           # Replace 'devopshome' with your Docker Hub registry or ECR URI
-          image: devopshome/splitwise-backend:latest
+          image: ajaykumara/splitwise-backend:latest
           imagePullPolicy: Always
           ports:
             - containerPort: 5000

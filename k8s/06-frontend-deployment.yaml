@@ -18,7 +18,7 @@ spec:
       containers:
         - name: frontend
           # Replace 'devopshome' with your Docker Hub registry or ECR URI
-          image: devopshome/splitwise-frontend:latest
+          image: ajaykumara/splitwise-frontend:latest
           imagePullPolicy: Always
           ports:
             - containerPort: 80
