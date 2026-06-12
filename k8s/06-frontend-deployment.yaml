@@ -1,0 +1,31 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: splitwise-frontend
+  namespace: splitwise
+  labels:
+    app: splitwise-frontend
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: splitwise-frontend
+  template:
+    metadata:
+      labels:
+        app: splitwise-frontend
+    spec:
+      containers:
+        - name: frontend
+          # Replace 'devopshome' with your Docker Hub registry or ECR URI
+          image: devopshome/splitwise-frontend:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 80
+          resources:
+            limits:
+              cpu: "500m"
+              memory: "256Mi"
+            requests:
+              cpu: "100m"
+              memory: "128Mi"

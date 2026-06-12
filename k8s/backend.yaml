@@ -1,0 +1,96 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: splitwise-backend
+  namespace: splitwise
+  labels:
+    app: splitwise-backend
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: splitwise-backend
+  template:
+    metadata:
+      labels:
+        app: splitwise-backend
+    spec:
+      containers:
+        - name: backend
+          # Replace 'devopshome' with your Docker Hub registry name or AWS ECR URI
+          image: devopshome/splitwise-backend:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 5000
+          env:
+            - name: PORT
+              value: "5000"
+            - name: DB_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: splitwise-secrets
+                  key: DB_HOST
+            - name: DB_PORT
+              valueFrom:
+                secretKeyRef:
+                  name: splitwise-secrets
+                  key: DB_PORT
+            - name: DB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: splitwise-secrets
+                  key: DB_USER
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: splitwise-secrets
+                  key: DB_PASSWORD
+            - name: DB_NAME
+              valueFrom:
+                secretKeyRef:
+                  name: splitwise-secrets
+                  key: DB_NAME
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: splitwise-secrets
+                  key: JWT_SECRET
+            - name: JWT_EXPIRE
+              valueFrom:
+                secretKeyRef:
+                  name: splitwise-secrets
+                  key: JWT_EXPIRE
+            - name: NODE_ENV
+              valueFrom:
+                secretKeyRef:
+                  name: splitwise-secrets
+                  key: NODE_ENV
+          volumeMounts:
+            - name: uploads-volume
+              mountPath: /app/uploads
+          resources:
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+      volumes:
+        - name: uploads-volume
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: splitwise-backend
+  namespace: splitwise
+  labels:
+    app: splitwise-backend
+spec:
+  type: ClusterIP
+  ports:
+    - port: 5000
+      targetPort: 5000
+      protocol: TCP
+  selector:
+    app: splitwise-backend

@@ -1,0 +1,58 @@
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: splitwise-gateway
+  namespace: splitwise
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+spec:
+  gatewayClassName: nginx
+  listeners:
+    - name: http
+      port: 80
+      protocol: HTTP
+      allowedRoutes:
+        namespaces:
+          from: Same
+    - name: https
+      port: 443
+      protocol: HTTPS
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - name: splitwise-tls-cert
+      allowedRoutes:
+        namespaces:
+          from: Same
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: splitwise-route
+  namespace: splitwise
+spec:
+  parentRefs:
+    - name: splitwise-gateway
+      namespace: splitwise
+  hostnames:
+    - "splitwise.devopshome.online"
+  rules:
+    # Route API calls and upload files to backend
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /api
+        - path:
+            type: PathPrefix
+            value: /uploads
+      backendRefs:
+        - name: splitwise-backend
+          port: 5000
+    # Route all other web traffic to the frontend
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: splitwise-frontend
+          port: 80

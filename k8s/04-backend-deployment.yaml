@@ -1,0 +1,83 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: splitwise-backend
+  namespace: splitwise
+  labels:
+    app: splitwise-backend
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate # Required for EBS ReadWriteOnce PVC to detach from old pod and attach to new pod during updates
+  selector:
+    matchLabels:
+      app: splitwise-backend
+  template:
+    metadata:
+      labels:
+        app: splitwise-backend
+    spec:
+      containers:
+        - name: backend
+          # Replace 'devopshome' with your Docker Hub registry or ECR URI
+          image: devopshome/splitwise-backend:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 5000
+          env:
+            - name: PORT
+              value: "5000"
+            - name: DB_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: splitwise-secrets
+                  key: DB_HOST
+            - name: DB_PORT
+              valueFrom:
+                secretKeyRef:
+                  name: splitwise-secrets
+                  key: DB_PORT
+            - name: DB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: splitwise-secrets
+                  key: DB_USER
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: splitwise-secrets
+                  key: DB_PASSWORD
+            - name: DB_NAME
+              valueFrom:
+                secretKeyRef:
+                  name: splitwise-secrets
+                  key: DB_NAME
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: splitwise-secrets
+                  key: JWT_SECRET
+            - name: JWT_EXPIRE
+              valueFrom:
+                secretKeyRef:
+                  name: splitwise-secrets
+                  key: JWT_EXPIRE
+            - name: NODE_ENV
+              valueFrom:
+                secretKeyRef:
+                  name: splitwise-secrets
+                  key: NODE_ENV
+          volumeMounts:
+            - name: uploads-volume
+              mountPath: /app/uploads
+          resources:
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+      volumes:
+        - name: uploads-volume
+          persistentVolumeClaim:
+            claimName: splitwise-backend-pvc
