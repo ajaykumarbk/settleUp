@@ -47,7 +47,7 @@ spec:
             type: PathPrefix
             value: /uploads
       backendRefs:
-        - name: splitwise-backend
+        - name: backend
           port: 5000
     # Route all other traffic to the frontend Service
     - matches:
