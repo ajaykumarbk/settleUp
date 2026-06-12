@@ -1,0 +1,14 @@
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: splitwise-tls-cert
+  namespace: splitwise
+spec:
+  secretName: splitwise-tls-cert
+  dnsNames:
+    - "splitwise.devopshome.online"
+    - "splitewise.devopshome.online"
+  issuerRef:
+    name: letsencrypt-prod
+    kind: ClusterIssuer
+    group: cert-manager.io
