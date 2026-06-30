@@ -174,6 +174,20 @@ export const api = {
       }
       return data;
     },
+    googleLogin: async (idToken) => {
+      const data = await request('/api/auth/google', {
+        method: 'POST',
+        body: JSON.stringify({ idToken })
+      });
+      if (data && data.token) {
+        localStorage.setItem('splitwise_token', data.token);
+        localStorage.setItem('splitwise_user', JSON.stringify(data.user));
+      }
+      return data;
+    },
+    verifyEmail: async (token) => {
+      return await request(`/api/auth/verify-email?token=${token}`);
+    },
     me: async () => {
       return await request('/api/auth/me');
     },

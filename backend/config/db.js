@@ -87,7 +87,9 @@ async function initializeDatabase() {
       { table: 'groups', sql: `ALTER TABLE \`groups\` ADD COLUMN default_split_shares TEXT DEFAULT NULL`, col: 'default_split_shares' },
       { table: 'expenses', sql: `ALTER TABLE expenses ADD COLUMN is_recurring TINYINT DEFAULT 0`, col: 'is_recurring' },
       { table: 'expenses', sql: `ALTER TABLE expenses ADD COLUMN recurrence_interval VARCHAR(20) DEFAULT NULL`, col: 'recurrence_interval' },
-      { table: 'expenses', sql: `ALTER TABLE expenses ADD COLUMN next_recurrence_date DATE DEFAULT NULL`, col: 'next_recurrence_date' }
+      { table: 'expenses', sql: `ALTER TABLE expenses ADD COLUMN next_recurrence_date DATE DEFAULT NULL`, col: 'next_recurrence_date' },
+      { table: 'users', sql: `ALTER TABLE users ADD COLUMN is_verified TINYINT DEFAULT 0`, col: 'is_verified' },
+      { table: 'users', sql: `ALTER TABLE users ADD COLUMN verification_token VARCHAR(255) DEFAULT NULL`, col: 'verification_token' }
     ];
 
     for (const migration of migrations) {

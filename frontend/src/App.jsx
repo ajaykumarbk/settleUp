@@ -27,6 +27,7 @@ import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import GroupDetails from './pages/GroupDetails';
 import FriendDetails from './pages/FriendDetails';
+import VerifyEmail from './pages/VerifyEmail';
 
 function NavigationSidebar({ refreshTrigger, triggerRefresh, lang, handleLanguageChange }) {
   const [groups, setGroups] = useState([]);
@@ -724,6 +725,7 @@ export default function App() {
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/signup" element={<Login isSignup={true} />} />
+        <Route path="/verify-email" element={<VerifyEmail />} />
         
         {/* Guarded App Routes */}
         <Route 

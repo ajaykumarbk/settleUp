@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { Coins, ShieldAlert } from 'lucide-react';
+import { Coins, ShieldAlert, CheckCircle } from 'lucide-react';
 import { api } from '../utils/api';
 
 export default function Login({ isSignup = false }) {
@@ -8,6 +8,7 @@ export default function Login({ isSignup = false }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
   const [loading, setLoading] = useState(false);
 
   const navigate = useNavigate();
@@ -15,6 +16,7 @@ export default function Login({ isSignup = false }) {
   // Clear errors when toggling modes
   useEffect(() => {
     setError('');
+    setSuccessMessage('');
   }, [isSignup]);
 
   // If already logged in, redirect to dashboard
@@ -24,9 +26,72 @@ export default function Login({ isSignup = false }) {
     }
   }, [navigate]);
 
+  // Google Sign-In Integration
+  useEffect(() => {
+    const script = document.createElement('script');
+    script.src = 'https://accounts.google.com/gsi/client';
+    script.async = true;
+    script.defer = true;
+    document.body.appendChild(script);
+
+    script.onload = () => {
+      initializeGoogleSignIn();
+    };
+
+    return () => {
+      // Clean up script on unmount
+      const existingScript = document.querySelector('script[src="https://accounts.google.com/gsi/client"]');
+      if (existingScript) {
+        document.body.removeChild(existingScript);
+      }
+    };
+  }, [isSignup]);
+
+  const initializeGoogleSignIn = () => {
+    try {
+      // Replace with your Google Client ID, or load from Vite env
+      const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID || '1096752763321-defaultplaceholder.apps.googleusercontent.com';
+      
+      if (window.google) {
+        window.google.accounts.id.initialize({
+          client_id: clientId,
+          callback: handleGoogleCredentialResponse,
+        });
+
+        window.google.accounts.id.renderButton(
+          document.getElementById('google-signin-button'),
+          { theme: 'dark', size: 'large', width: 360 }
+        );
+      }
+    } catch (err) {
+      console.error('Error initializing Google Sign-In:', err);
+    }
+  };
+
+  const handleGoogleCredentialResponse = async (response) => {
+    setError('');
+    setSuccessMessage('');
+    setLoading(true);
+
+    try {
+      const res = await api.auth.googleLogin(response.credential);
+      if (res.error) {
+        setError(res.message || 'Google Authentication failed. Ensure your email is a standard @gmail.com account.');
+      } else {
+        navigate('/');
+        window.location.reload();
+      }
+    } catch (err) {
+      setError('Connection failed. Please ensure the backend is running.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
+    setSuccessMessage('');
     setLoading(true);
 
     try {
@@ -40,10 +105,14 @@ export default function Login({ isSignup = false }) {
       if (res.error) {
         setError(res.message || 'Authentication failed. Please check your inputs.');
       } else {
-        // Redirect to dashboard
-        navigate('/');
-        // Force window reload to reinitialize App sidebar layout
-        window.location.reload();
+        if (isSignup && res.requiresVerification) {
+          // If signup requires verification, show success message
+          setSuccessMessage(res.message);
+        } else {
+          // Redirect to dashboard
+          navigate('/');
+          window.location.reload();
+        }
       }
     } catch (err) {
       setError('Connection failed. Please ensure the backend is running.');
@@ -104,9 +173,33 @@ export default function Login({ isSignup = false }) {
             fontSize: '0.9rem',
             textAlign: 'center'
           }}>
-            {isSignup ? 'Join Splitwise Replica and simplify your bill splits' : 'Access your dashboard, manage groups and settle balances'}
+            {isSignup ? 'Register with your @gmail.com account' : 'Access your dashboard, manage groups and settle balances'}
           </p>
         </div>
+
+        {/* Success Alert / Action Required */}
+        {successMessage && (
+          <div style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '12px',
+            padding: '16px',
+            background: 'var(--color-success-bg)',
+            border: '1px solid var(--color-success-border)',
+            borderRadius: 'var(--radius-md)',
+            color: 'var(--color-success)',
+            fontSize: '0.85rem',
+            marginBottom: '24px'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <CheckCircle size={18} style={{ flexShrink: 0 }} />
+              <span style={{ fontWeight: 600 }}>Verify Your Email</span>
+            </div>
+            <p style={{ color: 'var(--text-primary)', fontSize: '0.8rem', lineHeight: '1.4' }}>
+              {successMessage}
+            </p>
+          </div>
+        )}
 
         {/* Error Callout */}
         {error && (
@@ -144,11 +237,11 @@ export default function Login({ isSignup = false }) {
           )}
 
           <div className="form-group">
-            <label className="form-label">{isSignup ? 'Email Address' : 'Email or Username'}</label>
+            <label className="form-label">{isSignup ? 'Gmail Address' : 'Gmail Address or Username'}</label>
             <input
               type="text"
               className="form-control"
-              placeholder={isSignup ? "e.g. john@example.com" : "Enter email or username"}
+              placeholder={isSignup ? "e.g. john@gmail.com" : "Enter Gmail or username"}
               value={email}
               onChange={e => setEmail(e.target.value)}
               required
@@ -176,6 +269,18 @@ export default function Login({ isSignup = false }) {
             {loading ? 'Authenticating...' : isSignup ? 'Sign Up' : 'Log In'}
           </button>
         </form>
+
+        {/* Google OAuth Divider */}
+        <div style={{ display: 'flex', alignItems: 'center', margin: '24px 0', gap: '10px' }}>
+          <div style={{ flex: 1, height: '1px', background: 'var(--border-color)' }} />
+          <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>or</span>
+          <div style={{ flex: 1, height: '1px', background: 'var(--border-color)' }} />
+        </div>
+
+        {/* Google Sign-In Container */}
+        <div style={{ display: 'flex', justifyContent: 'center' }}>
+          <div id="google-signin-button" style={{ width: '100%', display: 'flex', justifyContent: 'center' }} />
+        </div>
 
         {/* Form Toggle */}
         <div style={{
