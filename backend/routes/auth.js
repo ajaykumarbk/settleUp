@@ -23,7 +23,10 @@ if (smtpEmail && smtpPass) {
     auth: {
       user: smtpEmail,
       pass: smtpPass
-    }
+    },
+    connectionTimeout: 5000, // 5s timeout to prevent hanging on cloud servers
+    greetingTimeout: 5000,
+    socketTimeout: 5000
   });
 }
 
@@ -128,27 +131,29 @@ router.post('/signup', async (req, res) => {
             </div>
           `
         });
+        
+        return res.status(201).json({
+          message: 'Registration successful! A verification link has been sent to your Gmail inbox. Please verify your email before logging in.',
+          requiresVerification: true
+        });
       } catch (err) {
-        console.error('SMTP Email Send Failure:', err.message);
-        // Rollback user creation on mail delivery failure
-        await query('DELETE FROM users WHERE id = ?', [newUserId]);
-        return res.status(500).json({
-          message: 'The server was unable to send a verification email. Please confirm your email address is correct and try again.'
+        console.error('SMTP Email Send Failure (Auto-verifying user as fallback):', err.message);
+        // Auto-verify user so they don't get locked out or face hung requests on Render
+        await query('UPDATE users SET is_verified = 1, verification_token = NULL WHERE id = ?', [newUserId]);
+        return res.status(201).json({
+          message: 'Registration successful! (SMTP email verification failed, so your account has been auto-verified for convenience.)',
+          requiresVerification: false
         });
       }
     } else {
       // SMTP not configured on the server
-      console.error('SMTP Configuration Error: Transporter is not initialized. Add SMTP_EMAIL and SMTP_PASSWORD to your .env file.');
-      await query('DELETE FROM users WHERE id = ?', [newUserId]);
-      return res.status(503).json({
-        message: 'Email verification service is temporarily unavailable. Please try again later.'
+      console.warn('SMTP Configuration Error (Auto-verifying user): Transporter is not initialized.');
+      await query('UPDATE users SET is_verified = 1, verification_token = NULL WHERE id = ?', [newUserId]);
+      return res.status(201).json({
+        message: 'Registration successful! (Email verification is disabled, your account is auto-verified.)',
+        requiresVerification: false
       });
     }
-
-    return res.status(201).json({
-      message: 'Registration successful! A verification link has been sent to your Gmail inbox. Please verify your email before logging in.',
-      requiresVerification: true
-    });
 
   } catch (error) {
     console.error('Signup error:', error);
