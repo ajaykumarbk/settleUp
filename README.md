@@ -263,3 +263,5 @@ For full diagnostics, read [SOP.md](file:///c:/Users/ajayk/.gemini/antigravity/s
 *   **Stuck Let's Encrypt Certificate (Pending Challenge)**:
     *   *Root Cause*: Feature flag `enableGatewayAPI` not set to true in cert-manager installation, preventing automatic HTTPRoute challenge solver provisioning.
     *   *Resolution*: Upgrade the cert-manager Helm chart with `--set config.enableGatewayAPI=true` and rollout restart.
+#   s e t t l e U p  
+ 
