@@ -1,6 +1,6 @@
 import { syncManager } from './sync';
 
-const API_BASE = import.meta.env.VITE_API_BASE || ''; // Relying on Vite proxy to map to http://localhost:5000 in dev, or custom URL in prod
+const API_BASE = (import.meta.env.VITE_API_BASE || '').replace(/\/$/, ''); // Strip trailing slash to avoid double slashes like //api in production
 
 async function request(url, options = {}) {
   const token = localStorage.getItem('splitwise_token');
