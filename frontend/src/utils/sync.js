@@ -122,7 +122,8 @@ export const syncManager = {
       };
 
       try {
-        const response = await fetch(item.url, {
+        const API_BASE = import.meta.env.VITE_API_BASE || '';
+        const response = await fetch(`${API_BASE}${item.url}`, {
           method: item.method,
           headers,
           body: item.body ? JSON.stringify(item.body) : undefined

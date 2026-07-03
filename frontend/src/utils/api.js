@@ -1,6 +1,6 @@
 import { syncManager } from './sync';
 
-const API_BASE = ''; // Relying on Vite proxy to map to http://localhost:5000
+const API_BASE = import.meta.env.VITE_API_BASE || ''; // Relying on Vite proxy to map to http://localhost:5000 in dev, or custom URL in prod
 
 async function request(url, options = {}) {
   const token = localStorage.getItem('splitwise_token');
@@ -81,7 +81,7 @@ async function request(url, options = {}) {
   };
 
   try {
-    const response = await fetch(url, config);
+    const response = await fetch(`${API_BASE}${url}`, config);
     const data = await response.json().catch(() => ({}));
 
     if (!response.ok) {
@@ -207,7 +207,7 @@ export const api = {
     exportData: async () => {
       const token = localStorage.getItem('splitwise_token');
       try {
-        const res = await fetch('/api/auth/export', {
+        const res = await fetch(`${API_BASE}/api/auth/export`, {
           headers: {
             ...(token ? { 'Authorization': `Bearer ${token}` } : {})
           }
@@ -282,7 +282,7 @@ export const api = {
       formData.append('receipt', file);
       const token = localStorage.getItem('splitwise_token');
       try {
-        const res = await fetch('/api/expenses/upload-receipt', {
+        const res = await fetch(`${API_BASE}/api/expenses/upload-receipt`, {
           method: 'POST',
           headers: {
             ...(token ? { 'Authorization': `Bearer ${token}` } : {})
