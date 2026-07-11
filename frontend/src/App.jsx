@@ -16,7 +16,8 @@ import {
   Download,
   Cloud,
   X,
-  Check
+  Check,
+  FileText
 } from 'lucide-react';
 import { api } from './utils/api';
 import { t } from './utils/translations';
@@ -25,6 +26,7 @@ import { syncManager } from './utils/sync';
 // Pages
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
+import SelfTracker from './pages/SelfTracker';
 import GroupDetails from './pages/GroupDetails';
 import FriendDetails from './pages/FriendDetails';
 import VerifyEmail from './pages/VerifyEmail';
@@ -320,6 +322,21 @@ function NavigationSidebar({ refreshTrigger, triggerRefresh, lang, handleLanguag
         >
           <LayoutDashboard size={18} />
           <span>{t('dashboard')}</span>
+        </Link>
+
+        <Link 
+          to="/self-tracker" 
+          className="btn btn-secondary" 
+          style={{ 
+            justifyContent: 'flex-start', 
+            background: location.pathname === '/self-tracker' ? 'var(--color-primary)' : 'rgba(255,255,255,0.02)',
+            borderColor: location.pathname === '/self-tracker' ? 'var(--color-primary)' : 'rgba(255,255,255,0.04)',
+            color: '#fff',
+            padding: '12px 16px'
+          }}
+        >
+          <FileText size={18} />
+          <span>{t('selfTracker')}</span>
         </Link>
 
         {/* Groups List */}
@@ -703,6 +720,7 @@ function MainApp({ lang, handleLanguageChange }) {
 
         <Routes>
           <Route path="/" element={<Dashboard triggerRefresh={triggerRefresh} refreshTrigger={refreshTrigger} />} />
+          <Route path="/self-tracker" element={<SelfTracker triggerRefresh={triggerRefresh} refreshTrigger={refreshTrigger} />} />
           <Route path="/groups/:id" element={<GroupDetails triggerRefresh={triggerRefresh} refreshTrigger={refreshTrigger} />} />
           <Route path="/friends/:id" element={<FriendDetails triggerRefresh={triggerRefresh} refreshTrigger={refreshTrigger} />} />
         </Routes>
